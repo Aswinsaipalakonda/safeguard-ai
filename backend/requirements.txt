@@ -10,3 +10,16 @@ channels
 daphne
 channels-redis
 asgiref
+# Alert engine
+gTTS
+paho-mqtt
+# Report generation
+reportlab
+openpyxl
+# AI engine
+ultralytics
+opencv-python-headless
+boto3
+numpy
+# Notifications
+twilio
