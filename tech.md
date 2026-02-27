@@ -80,3 +80,32 @@ To deliver a robust, real-time, and highly scalable safety monitoring system for
 1. **True Scalability**: Django + Postgres can scale to handle thousands of hardware telemetry logs a minute.
 2. **Millisecond Real-Time**: Standard apps use HTTP. We use _WebSockets_ to ensure life-saving alerts happen instantly.
 3. **Accessibility Innovation**: React + Tailwind allowed us to ditch standard text UIs and build an innovative, heavily animated _pictogram-first_ Kiosk UI that solves the actual business problem of illiteracy at factory gates.
+
+
+Voice-Activated Safety Assistant
+"Hey SafeGuard, what's Zone C compliance right now?"
+Integrate a natural language voice interface (Whisper ASR + Claude/GPT function calling) that allows safety managers to query the system hands-free.
+Sample queries:
+
+"How many violations in the last hour?"
+"Which worker has the most violations this week?"
+"Lock camera 3 to Zone B and send me a snapshot"
+"Generate a report for the morning shift"
+
+Why hands-free matters: Safety managers on the floor often have gloves on — a voice interface is genuinely more usable than a touchscreen dashboard in an industrial environment.
+Jury angle: Shows awareness of real-world UX constraints of the target environment. Practical innovation, not theoretical.
+
+ 
+ 
+ 
+ Fatigue & Distraction Detection Layer
+"PPE is not the only safety risk"
+Extend the computer vision pipeline to detect worker fatigue and distraction signals using facial/posture cues — without facial recognition (GDPR safe).
+Detectable signals:
+
+Head drooping / nodding patterns (fatigue)
+Worker looking at phone while operating machinery (distraction)
+Slouched posture near heavy equipment (ergonomic risk)
+Stationary worker in high-danger zone for unusually long time (unconscious/injured)
+
+Jury angle: Demonstrates the system goes beyond PPE — it's a comprehensive worker welfare platform, not just a compliance checker. Massively increases commercial value.

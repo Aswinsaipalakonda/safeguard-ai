@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Camera, AlertTriangle, FileText, Settings, ShieldAlert, Menu, X, Bell, Flame, Trophy, LayoutDashboard, Users, BarChart3, MapPin, ScrollText } from "lucide-react";
+import { Camera, AlertTriangle, FileText, Settings, ShieldAlert, Menu, X, Bell, Flame, Trophy, LayoutDashboard, Users, BarChart3, MapPin, ScrollText, ClipboardList, BrainCircuit, Clock, Map, Gamepad2, Mic, MicOff } from "lucide-react";
 import useStore from "../store";
+import { useVoiceCommand } from "../lib/useVoiceCommand";
 
 const SidebarContent = ({ location, navItems, setIsMobileMenuOpen, handleLogout, role }: any) => (
   <>
@@ -12,7 +13,7 @@ const SidebarContent = ({ location, navItems, setIsMobileMenuOpen, handleLogout,
       <span className="text-xl font-bold tracking-wide text-white">SafeGuard AI</span>
     </div>
     
-    <div className="flex-1 px-4 py-4 overflow-y-auto">
+    <div className="flex-1 px-4 py-4 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
       <nav className="space-y-2">
         {navItems.map((item: any) => {
           const active = location.pathname.startsWith(item.path);
@@ -64,6 +65,7 @@ export default function DashboardLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const logout = useStore((state) => state.logout);
   const role = useStore((state) => state.role);
+  const voice = useVoiceCommand();
 
   const handleLogout = () => {
     logout();
@@ -77,16 +79,27 @@ export default function DashboardLayout() {
     { label: "System Analytics", path: "/admin/analytics", icon: <BarChart3 size={20} />, roles: ["ADMIN"] },
     { label: "Zone Management", path: "/admin/zones", icon: <MapPin size={20} />, roles: ["ADMIN"] },
     { label: "Audit Log", path: "/admin/audit", icon: <ScrollText size={20} />, roles: ["ADMIN"] },
-    { label: "Heatmap", path: "/heatmap", icon: <Flame size={20} />, roles: ["ADMIN"] },
-    { label: "Settings", path: "/settings", icon: <Settings size={20} />, roles: ["ADMIN"] },
-    // ── Supervisor pages ──
-    { label: "Dashboard", path: "/monitoring", icon: <Camera size={20} />, roles: ["SUPERVISOR"] },
-    { label: "Violations", path: "/violations", icon: <AlertTriangle size={20} />, roles: ["SUPERVISOR"] },
-    { label: "Leaderboard", path: "/leaderboard", icon: <Trophy size={20} />, roles: ["SUPERVISOR"] },
-    { label: "Reports", path: "/reports", icon: <FileText size={20} />, roles: ["SUPERVISOR"] },
+    // ── Shared operational pages (both roles) ──
+    { label: "Dashboard", path: "/monitoring", icon: <Camera size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Violations", path: "/violations", icon: <AlertTriangle size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Attendance", path: "/attendance", icon: <ClipboardList size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Timeline", path: "/timeline", icon: <Clock size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Factory Map", path: "/factory-map", icon: <Map size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "AI Insights", path: "/ai-insights", icon: <BrainCircuit size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Heatmap", path: "/heatmap", icon: <Flame size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Leaderboard", path: "/leaderboard", icon: <Trophy size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Gamification", path: "/gamification", icon: <Gamepad2 size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Reports", path: "/reports", icon: <FileText size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Settings", path: "/settings", icon: <Settings size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
   ];
 
   const visibleNavItems = navItems.filter((item) => item.roles.includes(role || "SUPERVISOR"));
+
+  const mainContentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    mainContentRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [location.pathname]);
 
   return (
     <div className="flex h-screen bg-[#f4f6f8] text-slate-800 font-sans overflow-hidden">
@@ -134,6 +147,19 @@ export default function DashboardLayout() {
              <div className="relative bg-white border border-slate-200 rounded-full px-4 py-2 hidden md:flex items-center shadow-sm">
                 <span className="text-sm text-slate-400">Search zones, cameras...</span>
              </div>
+             {voice.supported && (
+               <button
+                 onClick={voice.toggleListening}
+                 className={`relative p-2 rounded-full transition-all ${voice.isListening ? "bg-red-100 text-red-600 animate-pulse" : "text-slate-500 hover:bg-slate-100"}`}
+                 title={voice.isListening ? "Listening..." : "Voice Command"}
+               >
+                 {voice.isListening ? <Mic size={20} /> : <MicOff size={20} />}
+                 {voice.isListening && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-ping" />}
+               </button>
+             )}
+             {voice.lastCommand && (
+               <span className="text-xs text-indigo-600 font-medium hidden md:block max-w-[160px] truncate">{voice.lastCommand}</span>
+             )}
              <button className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
                 <Bell size={24} />
                 <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
@@ -142,7 +168,7 @@ export default function DashboardLayout() {
         </header>
 
         {/* Dynamic Outlet */}
-        <div className="flex-1 overflow-auto p-4 lg:p-8 scroll-smooth will-change-scroll pb-24 lg:pb-8">
+        <div ref={mainContentRef} className="flex-1 overflow-auto p-4 lg:p-8 pb-24 lg:pb-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <Outlet />
         </div>
       </main>
