@@ -40,14 +40,19 @@ export default function Login() {
       }
     } catch {
       // Fallback: allow demo login without backend
+      if (username === "superadmin@safeguard.ai" && password === "demo123") {
+        login("demo-jwt-token-admin-2025", "ADMIN");
+        navigate("/admin");
+        return;
+      }
       if (username === "admin@safeguard.ai" && password === "demo123") {
         login("demo-jwt-token-safeguard-2025", "SUPERVISOR");
         navigate("/");
         return;
       }
-      if (username === "worker@safeguard.ai" && password === "demo123") {
+      if (username === "EMP-001" && password === "1234") {
         login("demo-jwt-token-worker-2025", "WORKER");
-        navigate("/kiosk");
+        navigate("/worker-login");
         return;
       }
       setError("Invalid credentials. Try the demo accounts below.");
@@ -179,6 +184,13 @@ export default function Login() {
             {/* Demo Credential Hints */}
             <div className="bg-slate-50 rounded-2xl p-4 space-y-2 mt-2 border border-slate-100">
               <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold text-center">Demo Accounts</p>
+              <button type="button" onClick={() => fillDemo("superadmin@safeguard.ai")} className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all group cursor-pointer">
+                <div>
+                  <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-600">Admin Dashboard</p>
+                  <p className="text-[10px] text-slate-400">superadmin@safeguard.ai · demo123</p>
+                </div>
+                <span className="text-[9px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold opacity-0 group-hover:opacity-100 transition-opacity">FILL</span>
+              </button>
               <button type="button" onClick={() => fillDemo("admin@safeguard.ai")} className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all group cursor-pointer">
                 <div>
                   <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-600">Supervisor Dashboard</p>

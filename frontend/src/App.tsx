@@ -9,6 +9,13 @@ import SafetyLeaderboard from "./pages/SafetyLeaderboard";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 
+// Admin Pages
+import AdminDashboard from "./pages/AdminDashboard";
+import UserManagement from "./pages/UserManagement";
+import SystemAnalytics from "./pages/SystemAnalytics";
+import ZoneManagement from "./pages/ZoneManagement";
+import AuditLog from "./pages/AuditLog";
+
 // Kiosk
 import FaceScanScreen from "./kiosk/FaceScanScreen";
 import PPECheckScreen from "./kiosk/PPECheckScreen.tsx";
@@ -22,7 +29,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/worker-login" element={<WorkerLogin />} />
 
-        {/* Supervisor & Admin Dashboard Routes (Protected) */}
+        {/* Admin & Supervisor Dashboard Routes (Protected) */}
         <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SUPERVISOR']} />}>
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<Navigate to="/monitoring" replace />} />
@@ -32,6 +39,13 @@ function App() {
             <Route path="leaderboard" element={<SafetyLeaderboard />} />
             <Route path="reports" element={<ComplianceReports />} />
             <Route path="settings" element={<Settings />} />
+
+            {/* Admin-only pages */}
+            <Route path="admin" element={<AdminDashboard />} />
+            <Route path="admin/users" element={<UserManagement />} />
+            <Route path="admin/analytics" element={<SystemAnalytics />} />
+            <Route path="admin/zones" element={<ZoneManagement />} />
+            <Route path="admin/audit" element={<AuditLog />} />
           </Route>
         </Route>
 

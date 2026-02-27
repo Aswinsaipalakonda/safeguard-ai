@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Camera, AlertTriangle, FileText, Settings, ShieldAlert, Menu, X, Bell, Flame, Trophy } from "lucide-react";
+import { Camera, AlertTriangle, FileText, Settings, ShieldAlert, Menu, X, Bell, Flame, Trophy, LayoutDashboard, Users, BarChart3, MapPin, ScrollText } from "lucide-react";
 import useStore from "../store";
 
 const SidebarContent = ({ location, navItems, setIsMobileMenuOpen, handleLogout, role }: any) => (
@@ -71,12 +71,19 @@ export default function DashboardLayout() {
   };
 
   const navItems = [
-    { label: "Dashboard", path: "/monitoring", icon: <Camera size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
-    { label: "Violations", path: "/violations", icon: <AlertTriangle size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
+    // ── Admin-only pages ──
+    { label: "Admin Dashboard", path: "/admin", icon: <LayoutDashboard size={20} />, roles: ["ADMIN"] },
+    { label: "User Management", path: "/admin/users", icon: <Users size={20} />, roles: ["ADMIN"] },
+    { label: "System Analytics", path: "/admin/analytics", icon: <BarChart3 size={20} />, roles: ["ADMIN"] },
+    { label: "Zone Management", path: "/admin/zones", icon: <MapPin size={20} />, roles: ["ADMIN"] },
+    { label: "Audit Log", path: "/admin/audit", icon: <ScrollText size={20} />, roles: ["ADMIN"] },
     { label: "Heatmap", path: "/heatmap", icon: <Flame size={20} />, roles: ["ADMIN"] },
-    { label: "Leaderboard", path: "/leaderboard", icon: <Trophy size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
-    { label: "Reports", path: "/reports", icon: <FileText size={20} />, roles: ["ADMIN", "SUPERVISOR"] },
     { label: "Settings", path: "/settings", icon: <Settings size={20} />, roles: ["ADMIN"] },
+    // ── Supervisor pages ──
+    { label: "Dashboard", path: "/monitoring", icon: <Camera size={20} />, roles: ["SUPERVISOR"] },
+    { label: "Violations", path: "/violations", icon: <AlertTriangle size={20} />, roles: ["SUPERVISOR"] },
+    { label: "Leaderboard", path: "/leaderboard", icon: <Trophy size={20} />, roles: ["SUPERVISOR"] },
+    { label: "Reports", path: "/reports", icon: <FileText size={20} />, roles: ["SUPERVISOR"] },
   ];
 
   const visibleNavItems = navItems.filter((item) => item.roles.includes(role || "SUPERVISOR"));
