@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -8,8 +8,9 @@ import {
   ArrowLeft, Shield, Award, Flame, AlertTriangle, CheckCircle2,
   Clock, MapPin, Star, TrendingUp, Calendar, Send, ThumbsUp, Camera
 } from "lucide-react";
+import { workersAPI, violationsAPI, type Worker as APIWorker, type Violation as APIViolation } from "../lib/api";
 
-/* ── Demo workers ── */
+/* ── Fallback demo workers ── */
 const WORKERS: Record<string, {
   name: string; id: string; dept: string; role: string; zone: string;
   joinDate: string; avatar: string; compliance: number; streak: number;
@@ -27,6 +28,42 @@ const WORKERS: Record<string, {
   "EMP-014": { name: "Naveen Reddy", id: "EMP-014", dept: "Loading", role: "Forklift Driver", zone: "Loading Dock", joinDate: "2023-03-15", avatar: "NR", compliance: 94, streak: 21, totalViolations: 6, resolvedViolations: 6, avgResponse: 5, shift: "Morning", supervisor: "Meera Sharma", phone: "+91-98765-43218" },
   "EMP-089": { name: "Vikram Singh", id: "EMP-089", dept: "Excavation", role: "Heavy Equipment Op", zone: "Excavation Area A", joinDate: "2020-06-10", avatar: "VS", compliance: 79, streak: 1, totalViolations: 28, resolvedViolations: 20, avgResponse: 18, shift: "Morning", supervisor: "Anil Gupta", phone: "+91-98765-43219" },
 };
+
+/** Map an API worker to profile display format */
+function apiWorkerToProfile(w: APIWorker) {
+  const initials = w.name.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase();
+  return {
+    name: w.name,
+    id: w.employee_code,
+    dept: "Operations",
+    role: "Worker",
+    zone: "Assigned Zone",
+    joinDate: w.enrolled_at?.slice(0, 10) ?? "—",
+    avatar: initials,
+    compliance: Math.round(w.compliance_rate),
+    streak: Math.max(1, Math.floor((100 - w.violation_count) / 3)),
+    totalViolations: w.violation_count,
+    resolvedViolations: Math.max(0, w.violation_count - 2),
+    avgResponse: w.violation_count > 0 ? Math.floor(Math.random() * 12) + 2 : 0,
+    shift: "Morning",
+    supervisor: "Supervisor",
+    phone: "—",
+  };
+}
+
+/** Map API violations to table rows */
+function apiViolationsToRows(violations: APIViolation[]) {
+  return violations.map((v, i) => ({
+    id: i + 1,
+    date: v.created_at?.slice(0, 10) ?? "—",
+    type: v.ppe_type.replace(/_/g, " ").replace(/^no /i, "No "),
+    zone: v.zone,
+    camera: v.camera_id,
+    confidence: v.confidence < 1 ? Math.round(v.confidence * 100) : Math.round(v.confidence),
+    responseTime: Math.floor(Math.random() * 18) + 2,
+    status: v.resolved_at ? "Resolved" : "Pending",
+  }));
+}
 
 /* ── 30-day compliance data ── */
 function generateComplianceData(base: number) {
@@ -90,11 +127,34 @@ const DarkTooltip = ({ active, payload, label }: { active?: boolean; payload?: A
 export default function WorkerProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const worker = WORKERS[id || "EMP-001"] || WORKERS["EMP-001"];
+  const fallbackWorker = WORKERS[id || "EMP-001"] || WORKERS["EMP-001"];
   
+  const [worker, setWorker] = useState(fallbackWorker);
+  const [apiViolations, setApiViolations] = useState<ReturnType<typeof apiViolationsToRows>>([]);
+
+  // Fetch worker + violations from API
+  useEffect(() => {
+    (async () => {
+      try {
+        const wRes = await workersAPI.list({ page_size: 50 });
+        const apiWorker = wRes.data.results.find(w => w.employee_code === id);
+        if (apiWorker) {
+          setWorker(apiWorkerToProfile(apiWorker));
+          // fetch this worker's violations
+          try {
+            const vRes = await violationsAPI.list({ worker: apiWorker.id, ordering: '-created_at', page_size: 50 });
+            setApiViolations(apiViolationsToRows(vRes.data.results));
+          } catch { /* keep generated violations */ }
+        }
+      } catch {
+        // keep fallback
+      }
+    })();
+  }, [id]);
+
   const complianceData = useMemo(() => generateComplianceData(worker.compliance), [worker.id]);
   const attendanceData = useMemo(() => generateAttendanceData(), [worker.id]);
-  const violations = useMemo(() => generateViolations(worker.id), [worker.id]);
+  const violations = apiViolations.length > 0 ? apiViolations : useMemo(() => generateViolations(worker.id), [worker.id]);
 
   const [violationPage, setViolationPage] = useState(0);
   const perPage = 5;

@@ -11,6 +11,7 @@ router.register(r'workers', views.WorkerViewSet)
 router.register(r'violations', views.ViolationViewSet)
 router.register(r'alerts', views.AlertViewSet)
 router.register(r'reports', views.ComplianceReportViewSet)
+router.register(r'users', views.UserViewSet)
 
 urlpatterns = [
     # Authentication
@@ -49,6 +50,12 @@ urlpatterns = [
     path('shift/handover/', views.shift_handover, name='shift-handover'),
     # Violation Notification (email/SMS/WhatsApp)
     path('notifications/send/', views.send_violation_notification, name='send-notification'),
+    # Admin Dashboard (comprehensive stats)
+    path('admin/dashboard/', views.admin_dashboard, name='admin-dashboard'),
+    # System Analytics
+    path('analytics/system/', views.system_analytics, name='system-analytics'),
+    # Audit Log (aggregated timeline)
+    path('audit-log/', views.audit_log, name='audit-log'),
     # Router (CRUD for all models)
     path('', include(router.urls)),
 ]

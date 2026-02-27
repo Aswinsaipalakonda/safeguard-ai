@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Clock, Search, ChevronDown, Camera, AlertTriangle, CheckCircle2,
   Shield, MapPin, Eye, ChevronRight
 } from "lucide-react";
+import { violationsAPI, alertsAPI, type Violation, type Alert } from "../lib/api";
 
 /* ── Demo timeline events ── */
 const DEMO_EVENTS = [
@@ -23,15 +24,70 @@ const DEMO_EVENTS = [
   { id: 15, time: "10:22 AM", date: "Today", type: "alert", severity: "medium", title: "Zone Compliance Drop", worker: "System", workerId: "—", zone: "Underground Shaft B", camera: "—", confidence: null, responseTime: null, status: "active", missing: [], description: "Zone compliance dropped below 80% threshold. 3 active violations in zone." },
 ];
 
+interface TimelineEvent {
+  id: number; time: string; date: string; type: string; severity: string;
+  title: string; worker: string; workerId: string; zone: string; camera: string;
+  confidence: number | null; responseTime: number | null; status: string;
+  missing: string[]; description: string;
+}
+
+function violationToEvent(v: Violation, idx: number): TimelineEvent {
+  const conf = v.confidence < 1 ? v.confidence * 100 : v.confidence;
+  return {
+    id: v.id, time: new Date(v.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + (new Date(v.created_at).getHours() >= 12 ? 'PM' : 'AM'),
+    date: isToday(v.created_at) ? 'Today' : new Date(v.created_at).toLocaleDateString(),
+    type: v.resolved_at ? 'resolved' : 'violation',
+    severity: conf > 93 ? 'critical' : conf > 88 ? 'high' : conf > 82 ? 'medium' : 'low',
+    title: `${v.ppe_type.charAt(0).toUpperCase() + v.ppe_type.slice(1)} Violation${v.resolved_at ? ' Resolved' : ' Detected'}`,
+    worker: v.worker_name || 'Unknown', workerId: `W-${v.worker || idx}`,
+    zone: v.zone || 'Unknown', camera: v.camera_id || 'CAM-01',
+    confidence: Math.round(conf), responseTime: v.resolved_at ? Math.round((new Date(v.resolved_at).getTime() - new Date(v.created_at).getTime()) / 60000) : null,
+    status: v.resolved_at ? 'resolved' : 'pending', missing: [v.ppe_type],
+    description: v.resolved_at ? `Violation resolved. PPE: ${v.ppe_type}` : `AI detected ${v.ppe_type} violation in ${v.zone} with ${Math.round(conf)}% confidence.`,
+  };
+}
+
+function alertToEvent(a: Alert): TimelineEvent {
+  return {
+    id: 10000 + a.id, time: new Date(a.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + (new Date(a.sent_at).getHours() >= 12 ? 'PM' : 'AM'),
+    date: isToday(a.sent_at) ? 'Today' : new Date(a.sent_at).toLocaleDateString(),
+    type: 'alert', severity: a.level >= 4 ? 'critical' : a.level >= 3 ? 'high' : 'medium',
+    title: `Level ${a.level} Alert — ${a.channel}`, worker: 'System', workerId: '—',
+    zone: '—', camera: '—', confidence: null as number | null, responseTime: null as number | null,
+    status: a.acknowledged_at ? 'resolved' : 'active', missing: [] as string[],
+    description: `Alert level ${a.level} sent via ${a.channel}${a.acknowledged_at ? '. Acknowledged.' : '. Awaiting acknowledgement.'}`,
+  };
+}
+
+function isToday(dateStr: string) {
+  return new Date(dateStr).toDateString() === new Date().toDateString();
+}
 
 
 export default function IncidentTimeline() {
+  const [events, setEvents] = useState<TimelineEvent[]>(DEMO_EVENTS as TimelineEvent[]);
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const filtered = DEMO_EVENTS.filter(e => {
+  useEffect(() => {
+    const fetchTimeline = async () => {
+      try {
+        const [vRes, aRes] = await Promise.all([
+          violationsAPI.list({ ordering: '-created_at', page_size: 30 }),
+          alertsAPI.list({ ordering: '-sent_at', page_size: 20 }),
+        ]);
+        const vEvents = vRes.data.results.map((v, i) => violationToEvent(v, i));
+        const aEvents = aRes.data.results.map(a => alertToEvent(a));
+        const combined = [...vEvents, ...aEvents].sort((a, b) => b.id - a.id);
+        if (combined.length > 0) setEvents(combined);
+      } catch { /* keep demo */ }
+    };
+    fetchTimeline();
+  }, []);
+
+  const filtered = events.filter(e => {
     const matchSearch = e.title.toLowerCase().includes(search.toLowerCase()) || e.worker.toLowerCase().includes(search.toLowerCase()) || e.zone.toLowerCase().includes(search.toLowerCase());
     const matchSeverity = severityFilter === "ALL" || e.severity === severityFilter;
     const matchType = typeFilter === "ALL" || e.type === typeFilter;
@@ -62,10 +118,10 @@ export default function IncidentTimeline() {
   };
 
   const stats = {
-    total: DEMO_EVENTS.length,
-    critical: DEMO_EVENTS.filter(e => e.severity === "critical").length,
-    pending: DEMO_EVENTS.filter(e => e.status === "pending" || e.status === "escalated").length,
-    avgResponse: Math.round(DEMO_EVENTS.filter(e => e.responseTime).reduce((a, e) => a + (e.responseTime || 0), 0) / DEMO_EVENTS.filter(e => e.responseTime).length),
+    total: events.length,
+    critical: events.filter(e => e.severity === "critical").length,
+    pending: events.filter(e => e.status === "pending" || e.status === "escalated").length,
+    avgResponse: Math.round(events.filter(e => e.responseTime).reduce((a, e) => a + (e.responseTime || 0), 0) / Math.max(events.filter(e => e.responseTime).length, 1)),
   };
 
   return (

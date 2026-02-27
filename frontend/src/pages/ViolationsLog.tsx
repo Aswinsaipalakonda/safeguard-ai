@@ -2,11 +2,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { DownloadCloud, Filter, X, Eye, CheckCircle2, Clock, ChevronDown, Search } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
-import api from "../lib/api";
+import api, { violationsAPI } from "../lib/api";
 import useStore from "../store";
 
 interface Violation {
   id: string;
+  apiId?: number | null;
   time: string;
   date: string;
   worker: string;
@@ -56,21 +57,22 @@ export default function ViolationsLog() {
   useEffect(() => {
     const fetchViolations = async () => {
       try {
-        const response = await api.get("violations/");
-        const data = response.data.violations || response.data;
+        const response = await api.get("violations/", { params: { ordering: '-created_at', page_size: 100 } });
+        const data = response.data.results || response.data;
         if (!data || data.length === 0) throw new Error("empty");
         const mappedData = data.map((v: any) => ({
           id: `V-${v.id}`,
+          apiId: v.id,
           time: new Date(v.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           date: new Date(v.created_at).toISOString().split("T")[0],
-          worker: v.worker || "Unknown",
-          zone: v.zone,
+          worker: v.worker_name || "Unknown",
+          zone: v.zone || "Unknown",
           ppe: v.ppe_type,
-          confidence: `${(v.confidence * 100).toFixed(0)}%`,
+          confidence: `${v.confidence < 1 ? (v.confidence * 100).toFixed(0) : v.confidence.toFixed(0)}%`,
           status: v.resolved_at ? "Resolved" : "Active",
-          camera: v.camera || "CAM-01",
-          severity: v.confidence > 0.9 ? "critical" : v.confidence > 0.85 ? "high" : "medium",
-          snapshot: "",
+          camera: v.camera_id || "CAM-01",
+          severity: v.confidence > 0.9 ? "critical" : v.confidence > 0.85 ? "high" : v.confidence > 0.8 ? "medium" : "low",
+          snapshot: v.image_path || "",
         }));
         setViolations(mappedData);
       } catch {
@@ -89,7 +91,16 @@ export default function ViolationsLog() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const handleResolve = (id: string) => {
+  const handleResolve = async (id: string) => {
+    const violation = violations.find(v => v.id === id);
+    if (violation?.apiId) {
+      try {
+        await violationsAPI.resolve(violation.apiId);
+      } catch {
+        showToast(`Failed to resolve ${id}`);
+        return;
+      }
+    }
     setViolations((prev) => prev.map((v) => v.id === id ? { ...v, status: "Resolved" } : v));
     setSelectedViolation(null);
     showToast(`${id} marked as Resolved`);

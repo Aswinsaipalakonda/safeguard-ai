@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
-import { ShieldAlert, AlertCircle, Camera, CheckCircle2, TrendingUp, TrendingDown, Activity, X, Bell, Volume2 } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { ShieldAlert, AlertCircle, Camera, CheckCircle2, TrendingUp, TrendingDown, Activity, X, Bell, Volume2, Loader2 } from "lucide-react";
+import { analyticsAPI, violationsAPI, zonesAPI, type DashboardStats, type Violation, type Zone } from "../lib/api";
 
 interface ViolationEvent {
   id: string;
+  apiId: number | null;
   camera: string;
   cameraName: string;
   worker: string;
@@ -13,117 +15,162 @@ interface ViolationEvent {
   resolved: boolean;
 }
 
-const DEMO_WORKERS = ["Rajesh Kumar", "Suresh Reddy", "Anand Sharma", "Mohammed Ismail", "Priya Nair", "Vikram Singh", "Karthik Bhat", "Deepak Yadav"];
-const DEMO_PPE = ["Helmet Missing", "Safety Vest", "Harness Unfastened", "Safety Goggles", "Respirator Missing", "Steel-Toe Boots", "Welding Gloves", "Ear Protection"];
-const DEMO_ZONES = ["Excavation Area A", "Conveyor Belt Section", "Underground Shaft B", "Blasting Zone C", "Processing Plant", "Loading Dock"];
+function violationToEvent(v: Violation): ViolationEvent {
+  return {
+    id: `V-${v.id}`,
+    apiId: v.id,
+    camera: v.camera_id || "",
+    cameraName: v.camera_id || "Unknown Camera",
+    worker: v.worker_name || "Unknown",
+    ppe: v.ppe_type,
+    zone: v.zone || "Unknown",
+    confidence: v.confidence < 1 ? Math.round(v.confidence * 100) : Math.round(v.confidence),
+    time: new Date(v.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    resolved: v.resolved_at !== null,
+  };
+}
 
-const CAMERAS = [
-  { id: "cam-assembly-1", name: "Assembly Line 1", active: true, violations: 0, zone: "Assembly Line" },
-  { id: "cam-welding-2", name: "Welding Zone B", active: true, violations: 2, zone: "Welding Zone" },
-  { id: "cam-loading-3", name: "Loading Dock South", active: true, violations: 0, zone: "Loading Dock" },
-  { id: "cam-excavation-4", name: "Excavation Area A", active: true, violations: 3, zone: "Excavation Area A" },
-  { id: "cam-shaft-5", name: "Underground Shaft B", active: true, violations: 1, zone: "Underground Shaft B" },
+const FALLBACK_CAMERAS = [
+  { id: "cam-assembly-1", name: "Assembly Line 1", active: true, zone: "Assembly Line" },
+  { id: "cam-welding-2", name: "Welding Zone B", active: true, zone: "Welding Zone" },
+  { id: "cam-loading-3", name: "Loading Dock South", active: true, zone: "Loading Dock" },
+  { id: "cam-excavation-4", name: "Excavation Area A", active: true, zone: "Excavation Area A" },
+  { id: "cam-shaft-5", name: "Underground Shaft B", active: true, zone: "Underground Shaft B" },
 ];
 
 export default function LiveMonitoring() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeViolations, setActiveViolations] = useState<string[]>([]);
   const [violationEvents, setViolationEvents] = useState<ViolationEvent[]>([]);
-  const [totalToday, setTotalToday] = useState(124);
-  const [complianceRate, setComplianceRate] = useState(91);
-  const [highRisks, setHighRisks] = useState(14);
-  const [resolvedCount, setResolvedCount] = useState(110);
   const [selectedEvent, setSelectedEvent] = useState<ViolationEvent | null>(null);
   const [toastMsg, setToastMsg] = useState("");
   const [simulationActive, setSimulationActive] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dataLoadedRef = useRef(false);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(""), 3000);
   };
 
-  const generateViolation = useCallback(() => {
-    const cam = CAMERAS[Math.floor(Math.random() * CAMERAS.length)];
-    const event: ViolationEvent = {
-      id: `V-${1043 + violationEvents.length}`,
-      camera: cam.id,
-      cameraName: cam.name,
-      worker: DEMO_WORKERS[Math.floor(Math.random() * DEMO_WORKERS.length)],
-      ppe: DEMO_PPE[Math.floor(Math.random() * DEMO_PPE.length)],
-      zone: DEMO_ZONES[Math.floor(Math.random() * DEMO_ZONES.length)],
-      confidence: Math.floor(Math.random() * 15 + 85),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      resolved: false,
-    };
-    setViolationEvents((prev) => [event, ...prev].slice(0, 20));
-    setActiveViolations((prev) => [...prev, cam.id]);
-    setTotalToday((prev) => prev + 1);
-    setComplianceRate((prev) => Math.max(75, prev - Math.random() * 0.3));
-    setHighRisks((prev) => prev + (Math.random() > 0.7 ? 1 : 0));
-    setTimeout(() => {
-      setActiveViolations((prev) => prev.filter((id) => id !== cam.id));
-    }, 4000);
-    // Randomly auto-resolve ~40% of violations after 8-15 seconds
-    if (Math.random() < 0.4) {
-      const resolveDelay = Math.random() * 7000 + 8000;
-      setTimeout(() => {
-        setViolationEvents((prev) => prev.map((e) => e.id === event.id ? { ...e, resolved: true } : e));
-        setResolvedCount((prev) => prev + 1);
-        setComplianceRate((prev) => Math.min(99, prev + Math.random() * 0.5));
-      }, resolveDelay);
+  // Fetch real data from backend API
+  const fetchData = useCallback(async (initial = false) => {
+    if (initial) setLoading(true);
+    try {
+      const [statsRes, violationsRes, zonesRes] = await Promise.all([
+        analyticsAPI.dashboardStats(),
+        violationsAPI.list({ ordering: '-created_at', page_size: 20 }),
+        zonesAPI.list({ page_size: 50 }),
+      ]);
+      setStats(statsRes.data);
+      setZones(zonesRes.data.results);
+      setViolationEvents(violationsRes.data.results.map(violationToEvent));
+      dataLoadedRef.current = true;
+      // Flash cameras with unresolved violations
+      if (!initial) {
+        const cams = violationsRes.data.results
+          .filter(v => !v.resolved_at).map(v => v.camera_id).slice(0, 2);
+        if (cams.length) {
+          setActiveViolations(cams);
+          setTimeout(() => setActiveViolations([]), 4000);
+        }
+      }
+    } catch (err) {
+      console.warn("API unavailable, using fallback demo data", err);
+      if (!dataLoadedRef.current) {
+        setStats({
+          today_violations: 124, today_resolved: 110, active_alerts: 14,
+          compliance_rate: 91, week_change_pct: -12.5,
+          ppe_breakdown: [
+            { ppe_type: "Helmet Missing", count: 82 },
+            { ppe_type: "Unfastened Vest", count: 31 },
+            { ppe_type: "Restricted Area Entry", count: 11 },
+          ],
+          zone_stats: [
+            { zone: "Assembly Line", count: 12 },
+            { zone: "Welding Zone", count: 45 },
+            { zone: "Loading Dock", count: 3 },
+          ],
+        });
+      }
+    } finally {
+      setLoading(false);
     }
-  }, [violationEvents.length]);
-
-  // Auto-simulation every 6-10 seconds
-  useEffect(() => {
-    if (!simulationActive) return;
-    const interval = setInterval(() => {
-      generateViolation();
-    }, Math.random() * 4000 + 6000);
-    return () => clearInterval(interval);
-  }, [simulationActive, generateViolation]);
-
-  // Generate initial events with a mix of resolved and active
-  useEffect(() => {
-    const resolvedPattern = [false, true, false, true, false, true, false, true];
-    const initial: ViolationEvent[] = Array.from({ length: 8 }, (_, i) => ({
-      id: `V-${1030 + i}`,
-      camera: CAMERAS[i % CAMERAS.length].id,
-      cameraName: CAMERAS[i % CAMERAS.length].name,
-      worker: DEMO_WORKERS[i % DEMO_WORKERS.length],
-      ppe: DEMO_PPE[i % DEMO_PPE.length],
-      zone: DEMO_ZONES[i % DEMO_ZONES.length],
-      confidence: Math.floor(Math.random() * 10 + 88),
-      time: new Date(Date.now() - i * 180000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      resolved: resolvedPattern[i],
-    }));
-    setViolationEvents(initial);
   }, []);
 
-  // Try real WebSocket, fallback silently
+  // Initial data load
+  useEffect(() => { fetchData(true); }, [fetchData]);
+
+  // Poll for fresh data every 15s when live
+  useEffect(() => {
+    if (!simulationActive) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      return;
+    }
+    pollRef.current = setInterval(() => fetchData(), 15000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [simulationActive, fetchData]);
+
+  // Real-time WebSocket connection
   useEffect(() => {
     try {
       const ws = new WebSocket("ws://localhost:8000/ws/live/");
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.camera_id) {
-          setActiveViolations([data.camera_id]);
-          setTimeout(() => setActiveViolations((prev) => prev.filter(id => id !== data.camera_id)), 3000);
+          setActiveViolations(prev => [...prev, data.camera_id]);
+          setTimeout(() => setActiveViolations(prev => prev.filter(id => id !== data.camera_id)), 3000);
+          fetchData();
         }
       };
       ws.onerror = () => ws.close();
       return () => ws.close();
-    } catch {
-      /* silent fallback */
-    }
-  }, []);
+    } catch { /* silent fallback */ }
+  }, [fetchData]);
 
-  const handleResolve = (eventId: string) => {
-    setViolationEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, resolved: true } : e));
-    setResolvedCount((prev) => prev + 1);
+  // Resolve violation via real API
+  const handleResolve = async (event: ViolationEvent) => {
+    if (event.apiId) {
+      try { await violationsAPI.resolve(event.apiId); } catch {
+        showToast(`Failed to resolve ${event.id}`);
+        return;
+      }
+    }
+    setViolationEvents(prev => prev.map(e => e.id === event.id ? { ...e, resolved: true } : e));
     setSelectedEvent(null);
-    showToast(`${eventId} resolved successfully`);
+    showToast(`${event.id} resolved successfully`);
+    try { const r = await analyticsAPI.dashboardStats(); setStats(r.data); } catch {}
   };
+
+  // Derived values from API stats
+  const totalToday = stats?.today_violations ?? 0;
+  const complianceRate = stats?.compliance_rate ?? 0;
+  const resolvedCount = stats?.today_resolved ?? 0;
+  const highRisks = stats?.active_alerts ?? 0;
+  const weekChange = stats?.week_change_pct ?? 0;
+  const ppeBreakdown = stats?.ppe_breakdown?.slice(0, 3) ?? [];
+  const zoneStats = stats?.zone_stats?.slice(0, 3) ?? [];
+
+  // Build camera list from zone data, fallback to demo
+  const cameras = zones.length > 0
+    ? zones.flatMap(z => z.camera_ids.map((camId, i) => ({
+        id: camId, name: `${z.name} Cam ${i + 1}`, active: true, zone: z.name,
+      }))).slice(0, 6)
+    : FALLBACK_CAMERAS;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <Loader2 className="w-10 h-10 animate-spin text-purple-500 mx-auto mb-4" />
+          <p className="text-sm text-slate-400 tracking-wider">Loading live monitoring data…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col xl:flex-row gap-6 min-h-full font-sans">
@@ -143,7 +190,7 @@ export default function LiveMonitoring() {
             <div className="flex items-center space-x-3">
               <AlertCircle className="w-5 h-5 animate-pulse" />
               <span className="text-sm font-medium tracking-wide">
-                LIVE: PPE violation detected on {CAMERAS.find(c => c.id === activeViolations[0])?.name || "camera"} — Immediate attention required.
+                LIVE: PPE violation detected on {cameras.find(c => c.id === activeViolations[0])?.name || "camera"} — Immediate attention required.
               </span>
             </div>
             <button onClick={() => { setSelectedEvent(violationEvents[0] || null); }} className="bg-white text-black px-6 py-2 rounded-full text-xs font-bold tracking-widest hover:bg-slate-200">
@@ -169,8 +216,8 @@ export default function LiveMonitoring() {
             <button onClick={() => { setSoundEnabled(!soundEnabled); showToast(soundEnabled ? "Sound muted" : "Sound enabled"); }} className="p-1.5 rounded-full hover:bg-slate-100">
               <Volume2 className={`w-4 h-4 ${soundEnabled ? "text-slate-600" : "text-slate-300"}`} />
             </button>
-            <button onClick={() => generateViolation()} className="bg-red-500 text-white px-4 py-1.5 rounded-full text-xs font-bold hover:bg-red-600 shadow-md">
-              TRIGGER EVENT ▼
+            <button onClick={() => fetchData()} className="bg-blue-500 text-white px-4 py-1.5 rounded-full text-xs font-bold hover:bg-blue-600 shadow-md">
+              REFRESH ↻
             </button>
           </div>
         </div>
@@ -184,15 +231,16 @@ export default function LiveMonitoring() {
             </div>
             <div className="text-center my-8">
               <h1 className="text-5xl font-bold mb-2 tabular-nums">{totalToday}</h1>
-              <span className="text-xs font-mono text-green-400 bg-white/5 px-2 py-1 rounded-full items-center inline-flex">
-                <TrendingDown className="w-3 h-3 mr-1" /> -12.5%
+              <span className={`text-xs font-mono ${weekChange <= 0 ? 'text-green-400' : 'text-red-400'} bg-white/5 px-2 py-1 rounded-full items-center inline-flex`}>
+                {weekChange <= 0 ? <TrendingDown className="w-3 h-3 mr-1" /> : <TrendingUp className="w-3 h-3 mr-1" />} {weekChange > 0 ? '+' : ''}{weekChange}%
               </span>
               <p className="text-[10px] text-slate-400 tracking-widest uppercase mt-4">VIOLATIONS LOGGED TODAY</p>
             </div>
             <div className="space-y-3 mt-8 text-sm font-medium border-t border-white/10 pt-4">
-              <div className="flex justify-between items-center text-slate-300"><span>Helmet Missing</span> <span>82</span></div>
-              <div className="flex justify-between items-center text-slate-300"><span>Unfastened Vest</span> <span>31</span></div>
-              <div className="flex justify-between items-center text-slate-300"><span>Restricted Area Entry</span> <span>11</span></div>
+              {ppeBreakdown.map((item, i) => (
+                <div key={i} className="flex justify-between items-center text-slate-300"><span>{item.ppe_type}</span> <span>{item.count}</span></div>
+              ))}
+              {ppeBreakdown.length === 0 && <p className="text-slate-500 text-xs">No data</p>}
             </div>
           </div>
 
@@ -204,15 +252,22 @@ export default function LiveMonitoring() {
             </div>
             <div className="text-center my-8">
               <h1 className="text-5xl font-bold mb-2 tabular-nums">{complianceRate.toFixed(0)}<span className="text-3xl">%</span></h1>
-              <span className="text-xs font-mono text-green-400 bg-white/5 px-2 py-1 rounded-full items-center inline-flex">
-                <TrendingUp className="w-3 h-3 mr-1" /> +2.3%
+              <span className={`text-xs font-mono ${weekChange <= 0 ? 'text-green-400' : 'text-red-400'} bg-white/5 px-2 py-1 rounded-full items-center inline-flex`}>
+                <TrendingUp className="w-3 h-3 mr-1" /> vs last week
               </span>
               <p className="text-[10px] text-slate-400 tracking-widest uppercase mt-4">OVERALL SAFETY SCORE</p>
             </div>
             <div className="space-y-3 mt-8 text-sm font-medium border-t border-white/10 pt-4">
-              <div className="flex justify-between items-center text-slate-300"><span>Assembly Line</span> <span>95%</span></div>
-              <div className="flex justify-between items-center text-slate-300"><span>Welding Zone</span> <span className="text-red-400">76%</span></div>
-              <div className="flex justify-between items-center text-slate-300"><span>Loading Dock</span> <span>99%</span></div>
+              {zoneStats.map((z, i) => {
+                const rate = Math.round(100 - (z.count / Math.max(totalToday, 1)) * 100);
+                return (
+                  <div key={i} className="flex justify-between items-center text-slate-300">
+                    <span>{z.zone}</span>
+                    <span className={rate < 80 ? 'text-red-400' : ''}>{rate}%</span>
+                  </div>
+                );
+              })}
+              {zoneStats.length === 0 && <p className="text-slate-500 text-xs">No data</p>}
             </div>
           </div>
         </div>
@@ -249,7 +304,7 @@ export default function LiveMonitoring() {
                 <h2 className="text-2xl font-bold">100<span className="text-lg">%</span></h2>
                 <span className="text-xs text-green-500 font-medium bg-green-50 px-2 py-0.5 rounded-md flex items-center mb-1">STABLE</span>
               </div>
-              <p className="text-xs text-slate-400 mt-2">All {CAMERAS.length} cameras operational</p>
+              <p className="text-xs text-slate-400 mt-2">All {cameras.length} cameras operational</p>
             </div>
           </div>
         </div>
@@ -304,7 +359,7 @@ export default function LiveMonitoring() {
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto mb-6">
-          {CAMERAS.map(cam => {
+          {cameras.map(cam => {
             const hasViolation = activeViolations.includes(cam.id);
             return (
               <div key={cam.id} className={`p-4 rounded-2xl border ${hasViolation ? 'border-red-200 bg-red-50/50 animate-pulse' : 'border-slate-100 bg-slate-50'} transition-all cursor-pointer hover:border-indigo-300 hover:shadow-md`} onClick={() => showToast(`Connecting to ${cam.name} livestream...`)}>
@@ -362,7 +417,7 @@ export default function LiveMonitoring() {
             </div>
             <div className="flex space-x-3">
               {!selectedEvent.resolved && (
-                <button onClick={() => handleResolve(selectedEvent.id)} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors flex items-center justify-center space-x-2">
+                <button onClick={() => handleResolve(selectedEvent)} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors flex items-center justify-center space-x-2">
                   <CheckCircle2 className="w-4 h-4" /><span>Mark Resolved</span>
                 </button>
               )}

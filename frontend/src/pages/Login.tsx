@@ -28,9 +28,10 @@ export default function Login() {
       );
       if (response.data.access) {
         const token = response.data.access;
+        const refreshToken = response.data.refresh;
         const userRole = response.data.role || 'WORKER';
 
-        login(token, userRole);
+        login(token, userRole, refreshToken);
         
         if (userRole === 'WORKER') {
           navigate("/kiosk");
@@ -45,7 +46,7 @@ export default function Login() {
         navigate("/admin");
         return;
       }
-      if (username === "admin@safeguard.ai" && password === "demo123") {
+      if (username === "supervisor@safeguard.com" && password === "admin123") {
         login("demo-jwt-token-safeguard-2025", "SUPERVISOR");
         navigate("/");
         return;
@@ -61,9 +62,9 @@ export default function Login() {
     }
   };
 
-  const fillDemo = (email: string) => {
+  const fillDemo = (email: string, pass: string = "demo123") => {
     setUsername(email);
-    setPassword("demo123");
+    setPassword(pass);
     setError("");
   };
 
@@ -191,10 +192,10 @@ export default function Login() {
                 </div>
                 <span className="text-[9px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold opacity-0 group-hover:opacity-100 transition-opacity">FILL</span>
               </button>
-              <button type="button" onClick={() => fillDemo("admin@safeguard.ai")} className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all group cursor-pointer">
+              <button type="button" onClick={() => fillDemo("supervisor@safeguard.com", "admin123")} className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all group cursor-pointer">
                 <div>
                   <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-600">Supervisor Dashboard</p>
-                  <p className="text-[10px] text-slate-400">admin@safeguard.ai · demo123</p>
+                  <p className="text-[10px] text-slate-400">supervisor@safeguard.com · admin123</p>
                 </div>
                 <span className="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-bold opacity-0 group-hover:opacity-100 transition-opacity">FILL</span>
               </button>

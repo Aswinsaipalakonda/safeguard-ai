@@ -6,9 +6,17 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
+import { analyticsAPI, type LeaderboardEntry } from "../lib/api";
 
-/* ── Demo workers with gamification data ── */
-const WORKERS = [
+/* ── Worker display type ── */
+interface GamWorker {
+  rank: number; name: string; id: string; dept: string; avatar: string;
+  xp: number; level: number; compliance: number; streak: number;
+  badges: number; tier: string; change: number;
+}
+
+/* ── Fallback demo workers with gamification data ── */
+const FALLBACK_WORKERS: GamWorker[] = [
   { rank: 1, name: "Priya Nair", id: "EMP-005", dept: "Processing", avatar: "PN", xp: 4850, level: 12, compliance: 100, streak: 60, badges: 6, tier: "Diamond", change: 0 },
   { rank: 2, name: "Lakshmi Devi", id: "EMP-008", dept: "Safety", avatar: "LD", xp: 4620, level: 11, compliance: 99, streak: 90, badges: 6, tier: "Diamond", change: 0 },
   { rank: 3, name: "Deepak Yadav", id: "EMP-003", dept: "Processing", avatar: "DY", xp: 4310, level: 11, compliance: 98, streak: 45, badges: 5, tier: "Platinum", change: 1 },
@@ -20,6 +28,29 @@ const WORKERS = [
   { rank: 9, name: "Sandeep Joshi", id: "EMP-011", dept: "Mining Ops", avatar: "SJ", xp: 2310, level: 6, compliance: 85, streak: 3, badges: 2, tier: "Silver", change: -1 },
   { rank: 10, name: "Vikram Singh", id: "EMP-089", dept: "Excavation", avatar: "VS", xp: 1850, level: 5, compliance: 79, streak: 1, badges: 1, tier: "Bronze", change: 0 },
 ];
+
+/** Map API leaderboard entries to display format */
+function mapLeaderboardEntry(e: LeaderboardEntry): GamWorker {
+  const score = e.safety_score;
+  const tier = score >= 90 ? "Diamond" : score >= 80 ? "Platinum" : score >= 70 ? "Gold" : score >= 55 ? "Silver" : "Bronze";
+  const level = Math.max(1, Math.floor(score / 8));
+  const xp = Math.round(score * 50);
+  const initials = e.name.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase();
+  return {
+    rank: e.rank,
+    name: e.name,
+    id: e.employee_code,
+    dept: "Operations",
+    avatar: initials,
+    xp,
+    level,
+    compliance: Math.round(score),
+    streak: e.streak_days,
+    badges: e.badges.length,
+    tier,
+    change: 0,
+  };
+}
 
 /* ── Achievement badges ── */
 const BADGES = [
@@ -68,24 +99,31 @@ const DarkTooltip = ({ active, payload, label }: { active?: boolean; payload?: A
 };
 
 export default function Gamification() {
-  const [showBadgePopup, setShowBadgePopup] = useState<typeof BADGES[0] | null>(null);
-  const [confetti, setConfetti] = useState(false);
+  const [showBadgePopup, _setShowBadgePopup] = useState<typeof BADGES[0] | null>(null);
+  const [confetti, _setConfetti] = useState(false);
+  const [workers, setWorkers] = useState<GamWorker[]>(FALLBACK_WORKERS);
 
-  // Simulate badge unlock after 3s
+  // Fetch leaderboard from API
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowBadgePopup(BADGES[1]); // "Iron Streak"
-      setConfetti(true);
-      setTimeout(() => { setConfetti(false); setShowBadgePopup(null); }, 4000);
-    }, 3000);
-    return () => clearTimeout(timer);
+    (async () => {
+      try {
+        const res = await analyticsAPI.leaderboard({ days: 30, limit: 15 });
+        const entries = res.data.leaderboard;
+        if (entries.length > 0) {
+          setWorkers(entries.map(mapLeaderboardEntry));
+        }
+      } catch {
+        // keep fallback
+      }
+    })();
   }, []);
 
+
   const stats = {
-    totalXP: WORKERS.reduce((a, w) => a + w.xp, 0),
-    avgLevel: (WORKERS.reduce((a, w) => a + w.level, 0) / WORKERS.length).toFixed(1),
-    totalBadges: WORKERS.reduce((a, w) => a + w.badges, 0),
-    topStreak: Math.max(...WORKERS.map(w => w.streak)),
+    totalXP: workers.reduce((a, w) => a + w.xp, 0),
+    avgLevel: workers.length > 0 ? (workers.reduce((a, w) => a + w.level, 0) / workers.length).toFixed(1) : "0",
+    totalBadges: workers.reduce((a, w) => a + w.badges, 0),
+    topStreak: workers.length > 0 ? Math.max(...workers.map(w => w.streak)) : 0,
   };
 
   return (
@@ -152,7 +190,7 @@ export default function Gamification() {
         <div className="lg:col-span-2 bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100">
           <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4"><Crown className="w-4 h-4 text-amber-500" />XP Leaderboard</h2>
           <div className="space-y-2">
-            {WORKERS.map(w => {
+            {workers.map(w => {
               const tier = tierConfig[w.tier];
               const progress = ((w.xp % 500) / ((w.level + 1) * 500)) * 100;
               return (
@@ -240,7 +278,7 @@ export default function Gamification() {
           <div className="bg-gradient-to-r from-[#1a1443] to-[#2c1555] rounded-[2rem] p-5 text-white">
             <h3 className="text-sm font-bold mb-3 flex items-center gap-2"><Crown className="w-4 h-4 text-amber-400" />Tier Distribution</h3>
             {Object.entries(tierConfig).map(([tier, config]) => {
-              const count = WORKERS.filter(w => w.tier === tier).length;
+              const count = workers.filter(w => w.tier === tier).length;
               return (
                 <div key={tier} className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
                   <div className="flex items-center gap-2">
@@ -249,7 +287,7 @@ export default function Gamification() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="h-1.5 w-20 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${(count / WORKERS.length) * 100}%` }} />
+                      <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${workers.length > 0 ? (count / workers.length) * 100 : 0}%` }} />
                     </div>
                     <span className="text-xs font-bold text-indigo-300 w-6 text-right">{count}</span>
                   </div>

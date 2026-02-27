@@ -3,9 +3,17 @@ import {
   Camera, Users, AlertTriangle, Shield, Activity, Wifi,
   ChevronRight, MapPin, Zap, Eye
 } from "lucide-react";
+import { zonesAPI, analyticsAPI, type Zone as APIZone, type HeatmapZone } from "../lib/api";
 
-/* ── Zone definitions ── */
-const ZONES = [
+/* ── Zone type for display ── */
+interface MapZone {
+  id: string; name: string; x: number; y: number; w: number; h: number;
+  risk: string; workers: number; cameras: number; compliance: number;
+  color: string; violations: number; depth: number;
+}
+
+/* ── Fallback zone definitions ── */
+const FALLBACK_ZONES: MapZone[] = [
   { id: "excavation-a", name: "Excavation Area A", x: 60, y: 160, w: 200, h: 120, risk: "high", workers: 8, cameras: 3, compliance: 76, color: "#ef4444", violations: 3, depth: 18 },
   { id: "shaft-b", name: "Underground Shaft B", x: 300, y: 120, w: 180, h: 140, risk: "critical", workers: 5, cameras: 4, compliance: 62, color: "#dc2626", violations: 5, depth: 30 },
   { id: "conveyor", name: "Conveyor Belt Section", x: 520, y: 180, w: 220, h: 90, risk: "medium", workers: 6, cameras: 3, compliance: 88, color: "#f59e0b", violations: 1, depth: 12 },
@@ -14,8 +22,38 @@ const ZONES = [
   { id: "loading", name: "Loading Dock", x: 640, y: 310, w: 170, h: 100, risk: "low", workers: 7, cameras: 2, compliance: 94, color: "#22c55e", violations: 0, depth: 10 },
 ];
 
+/* ── Layout positions for mapping API zones → SVG coordinates ── */
+const LAYOUT_POSITIONS = [
+  { x: 60, y: 160, w: 200, h: 120, depth: 18 },
+  { x: 300, y: 120, w: 180, h: 140, depth: 30 },
+  { x: 520, y: 180, w: 220, h: 90, depth: 12 },
+  { x: 120, y: 340, w: 240, h: 130, depth: 15 },
+  { x: 410, y: 320, w: 180, h: 110, depth: 20 },
+  { x: 640, y: 310, w: 170, h: 100, depth: 10 },
+];
+
+function mapApiZone(z: APIZone, heatmap: HeatmapZone | undefined, idx: number): MapZone {
+  const pos = LAYOUT_POSITIONS[idx % LAYOUT_POSITIONS.length];
+  const violations = heatmap?.violations ?? 0;
+  const compliance = violations > 4 ? 62 : violations > 2 ? 76 : violations > 0 ? 88 : 96;
+  const risk = z.is_high_risk ? (violations > 4 ? "critical" : "high") : violations > 1 ? "medium" : "low";
+  const color = risk === "critical" ? "#dc2626" : risk === "high" ? "#ef4444" : risk === "medium" ? "#f59e0b" : "#22c55e";
+  return {
+    id: `zone-${z.id}`,
+    name: z.name,
+    ...pos,
+    risk,
+    workers: Math.max(3, Math.floor(Math.random() * 8) + 3),
+    cameras: z.camera_ids.length,
+    compliance,
+    color,
+    violations,
+    depth: pos.depth,
+  };
+}
+
 /* ── Worker dots positions per zone ── */
-function generateWorkerDots(zone: typeof ZONES[0]) {
+function generateWorkerDots(zone: MapZone) {
   return Array.from({ length: zone.workers }, (_, i) => ({
     id: `${zone.id}-w${i}`,
     x: zone.x + 20 + (i % 4) * 40 + Math.random() * 15,
@@ -25,7 +63,7 @@ function generateWorkerDots(zone: typeof ZONES[0]) {
 }
 
 /* ── Camera positions per zone ── */
-function generateCameraPositions(zone: typeof ZONES[0]) {
+function generateCameraPositions(zone: MapZone) {
   return Array.from({ length: zone.cameras }, (_, i) => ({
     id: `${zone.id}-cam${i}`,
     x: zone.x + 10 + i * (zone.w / zone.cameras),
@@ -34,9 +72,32 @@ function generateCameraPositions(zone: typeof ZONES[0]) {
 }
 
 export default function FactoryMap() {
-  const [selectedZone, setSelectedZone] = useState<typeof ZONES[0] | null>(null);
+  const [zones, setZones] = useState<MapZone[]>(FALLBACK_ZONES);
+  const [selectedZone, setSelectedZone] = useState<MapZone | null>(null);
   const [tick, setTick] = useState(0);
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // Fetch zones + heatmap from API
+  useEffect(() => {
+    (async () => {
+      try {
+        const [zRes, hRes] = await Promise.all([
+          zonesAPI.list({ page_size: 50 }),
+          analyticsAPI.heatmap(7),
+        ]);
+        const apiZones = zRes.data.results;
+        const heatZones = hRes.data.zones;
+        if (apiZones.length > 0) {
+          setZones(apiZones.map((z, i) => {
+            const hz = heatZones.find(h => h.zone === z.name);
+            return mapApiZone(z, hz, i);
+          }));
+        }
+      } catch {
+        // keep fallback
+      }
+    })();
+  }, []);
 
   // Animation tick
   useEffect(() => {
@@ -51,10 +112,10 @@ export default function FactoryMap() {
     return "bg-emerald-100 text-emerald-700";
   };
 
-  const totalWorkers = ZONES.reduce((a, z) => a + z.workers, 0);
-  const totalCameras = ZONES.reduce((a, z) => a + z.cameras, 0);
-  const avgCompliance = Math.round(ZONES.reduce((a, z) => a + z.compliance, 0) / ZONES.length);
-  const totalViolations = ZONES.reduce((a, z) => a + z.violations, 0);
+  const totalWorkers = zones.reduce((a, z) => a + z.workers, 0);
+  const totalCameras = zones.reduce((a, z) => a + z.cameras, 0);
+  const avgCompliance = zones.length > 0 ? Math.round(zones.reduce((a, z) => a + z.compliance, 0) / zones.length) : 0;
+  const totalViolations = zones.reduce((a, z) => a + z.violations, 0);
 
   return (
     <div className="space-y-6 font-sans">
@@ -103,7 +164,7 @@ export default function FactoryMap() {
             <text x="10" y="35" fill="#475569" fontSize="9" fontFamily="monospace">LIVE • {new Date().toLocaleTimeString()}</text>
 
             {/* Zones */}
-            {ZONES.map(zone => {
+            {zones.map(zone => {
               const isSelected = selectedZone?.id === zone.id;
               const d = zone.depth;
               const workers = generateWorkerDots(zone);
@@ -248,7 +309,7 @@ export default function FactoryMap() {
               <div className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100">
                 <h2 className="text-sm font-bold text-slate-700 mb-3">All Zones</h2>
                 <div className="space-y-2">
-                  {ZONES.map(z => (
+                  {zones.map(z => (
                     <div
                       key={z.id}
                       className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 cursor-pointer transition-all border border-transparent hover:border-slate-200"

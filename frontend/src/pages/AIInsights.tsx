@@ -9,6 +9,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ComposedChart, Line
 } from "recharts";
+import { analyticsAPI } from "../lib/api";
 
 /* ── Demo Data ── */
 
@@ -90,6 +91,26 @@ export default function AIInsights() {
   const [liveAccuracy, setLiveAccuracy] = useState(94.2);
   const [liveInference, setLiveInference] = useState(23);
   const [liveFPS, setLiveFPS] = useState(24);
+  const [predictions, setPredictions] = useState(PREDICTION_CARDS);
+
+  // Fetch real predictive risk data
+  useEffect(() => {
+    const fetchPredictions = async () => {
+      try {
+        const res = await analyticsAPI.predictiveRisk();
+        if (res.data.predictions?.length) {
+          setPredictions(res.data.predictions.slice(0, 3).map(p => ({
+            zone: p.zone,
+            predicted: p.predicted_violations_24h,
+            confidence: Math.round(p.risk_probability * 100),
+            risk: p.risk_level as "critical" | "high" | "medium",
+            time: "Next 24 hours",
+          })));
+        }
+      } catch { /* keep demo */ }
+    };
+    fetchPredictions();
+  }, []);
 
   // Simulate live updates
   useEffect(() => {
@@ -311,7 +332,7 @@ export default function AIInsights() {
 
       {/* ═══ SECTION 5: Predictive Analytics ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {PREDICTION_CARDS.map(card => (
+        {predictions.map(card => (
           <div key={card.zone} className={`rounded-[2rem] p-6 border ${card.risk === "critical" ? "bg-red-50 border-red-200" : card.risk === "high" ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
             <div className="flex items-center gap-2 mb-3">
               <Zap className={`w-4 h-4 ${card.risk === "critical" ? "text-red-500" : card.risk === "high" ? "text-amber-500" : "text-blue-500"}`} />

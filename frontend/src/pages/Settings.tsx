@@ -1,5 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Save, Bell, Camera, User, Lock, ShieldAlert, CheckCircle2, XCircle, RefreshCw, Key, Smartphone } from "lucide-react";
+import { zonesAPI } from "../lib/api";
+
+const FALLBACK_CAMERAS = [
+  { id: "cam-assembly-1", name: "Assembly Line 1", ip: "192.168.1.101", resolution: "1920x1080", zone: "Assembly Line", status: "online", fps: 30, lastMaintenance: "2025-06-28" },
+  { id: "cam-welding-2", name: "Welding Zone B", ip: "192.168.1.102", resolution: "2560x1440", zone: "Welding Zone", status: "online", fps: 25, lastMaintenance: "2025-06-25" },
+  { id: "cam-loading-3", name: "Loading Dock South", ip: "192.168.1.103", resolution: "1920x1080", zone: "Loading Dock", status: "online", fps: 30, lastMaintenance: "2025-07-01" },
+  { id: "cam-excavation-4", name: "Excavation Area A", ip: "192.168.1.104", resolution: "3840x2160", zone: "Excavation Area", status: "online", fps: 15, lastMaintenance: "2025-06-20" },
+  { id: "cam-shaft-5", name: "Underground Shaft B", ip: "192.168.1.105", resolution: "1920x1080", zone: "Underground Shaft", status: "offline", fps: 0, lastMaintenance: "2025-06-15" },
+];
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("general");
@@ -8,13 +17,32 @@ export default function Settings() {
   const [isSaving, setIsSaving] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
   const [twoFA, setTwoFA] = useState(true);
-  const [cameras, setCameras] = useState([
-    { id: "cam-assembly-1", name: "Assembly Line 1", ip: "192.168.1.101", resolution: "1920x1080", zone: "Assembly Line", status: "online", fps: 30, lastMaintenance: "2025-06-28" },
-    { id: "cam-welding-2", name: "Welding Zone B", ip: "192.168.1.102", resolution: "2560x1440", zone: "Welding Zone", status: "online", fps: 25, lastMaintenance: "2025-06-25" },
-    { id: "cam-loading-3", name: "Loading Dock South", ip: "192.168.1.103", resolution: "1920x1080", zone: "Loading Dock", status: "online", fps: 30, lastMaintenance: "2025-07-01" },
-    { id: "cam-excavation-4", name: "Excavation Area A", ip: "192.168.1.104", resolution: "3840x2160", zone: "Excavation Area", status: "online", fps: 15, lastMaintenance: "2025-06-20" },
-    { id: "cam-shaft-5", name: "Underground Shaft B", ip: "192.168.1.105", resolution: "1920x1080", zone: "Underground Shaft", status: "offline", fps: 0, lastMaintenance: "2025-06-15" },
-  ]);
+  const [cameras, setCameras] = useState(FALLBACK_CAMERAS);
+
+  // Fetch zones → build camera list from zone camera_ids
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await zonesAPI.list({ page_size: 50 });
+        const zones = res.data.results;
+        const cams = zones.flatMap((z, zi) =>
+          z.camera_ids.map((camId, ci) => ({
+            id: camId,
+            name: `${z.name} Cam ${ci + 1}`,
+            ip: `192.168.1.${100 + zi * 10 + ci + 1}`,
+            resolution: z.is_high_risk ? "3840x2160" : "1920x1080",
+            zone: z.name,
+            status: "online" as const,
+            fps: z.is_high_risk ? 15 : 30,
+            lastMaintenance: new Date(Date.now() - Math.random() * 15 * 86400000).toISOString().slice(0, 10),
+          }))
+        );
+        if (cams.length > 0) setCameras(cams);
+      } catch {
+        // keep fallback cameras
+      }
+    })();
+  }, []);
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(""), 3000); };
 

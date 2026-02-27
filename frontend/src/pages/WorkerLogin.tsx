@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserCircle, Lock, ShieldAlert, ArrowRight, ScanFace, CheckCircle2, Factory } from "lucide-react";
+import { User, Lock, AlertTriangle, ArrowRight, Fingerprint, Loader2 } from "lucide-react";
 import useStore from "../store";
-import api from "../lib/api";
+import { authAPI } from "../lib/api";
 
 export default function WorkerLogin() {
   const [employeeId, setEmployeeId] = useState("");
@@ -18,10 +18,7 @@ export default function WorkerLogin() {
     setError("");
 
     try {
-      const response = await api.post("auth/token/", {
-        username: employeeId,
-        password: password,
-      });
+      const response = await authAPI.login(employeeId, password);
 
       if (response.data.access) {
         const token = response.data.access;
@@ -43,7 +40,7 @@ export default function WorkerLogin() {
         navigate("/kiosk");
         return;
       }
-      setError("No active account found with the given credentials");
+      setError("No active account found with the given credentials.");
     } finally {
       setIsLoading(false);
     }
@@ -56,90 +53,60 @@ export default function WorkerLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 font-sans relative overflow-hidden text-white">
-      {/* Dynamic Background Elements */}
-      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-emerald-600/10 rounded-full blur-[150px] pointer-events-none"></div>
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03]"></div>
+    <div className="min-h-screen w-full bg-[#020617] flex items-center justify-center p-6 relative overflow-hidden font-sans text-white">
+      {/* Ambient glowing orbs */}
+      <div className="absolute top-1/4 -left-20 w-[400px] h-[400px] bg-indigo-600/20 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute -bottom-20 -right-20 w-[500px] h-[500px] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03]" />
 
-      <div className="w-full max-w-5xl z-10 flex flex-col md:flex-row bg-slate-900/60 backdrop-blur-2xl rounded-[3rem] border border-slate-800/80 shadow-[0_0_80px_rgba(0,0,0,0.5)] overflow-hidden">
+      <div className="w-full max-w-md z-10 flex flex-col items-center">
         
-        {/* Left Side Branding */}
-        <div className="hidden md:flex flex-col justify-between w-1/2 bg-linear-to-b from-indigo-900/50 to-slate-900 p-12 border-r border-slate-800/50 relative overflow-hidden">
-           <div className="absolute inset-0 bg-linear-to-br from-indigo-600/20 to-transparent pointer-events-none"></div>
-           <div className="relative z-10">
-              <div className="bg-white/10 w-max p-3 rounded-2xl mb-8 backdrop-blur-md border border-white/5">
-                 <Factory className="w-10 h-10 text-indigo-400" />
-              </div>
-              <h1 className="text-4xl lg:text-5xl font-black text-white leading-tight tracking-wide mb-6">
-                SafeGuard AI<br/>
-                <span className="text-indigo-400 font-serif italic font-medium">Terminal</span>
-              </h1>
-              <p className="text-slate-400 text-lg max-w-xs leading-relaxed">
-                 Automated safety enforcement and identity verification.
-              </p>
-           </div>
-           
-           <div className="relative z-10 space-y-4">
-              <div className="flex items-center text-slate-300 text-sm font-medium bg-slate-950/40 p-3 rounded-xl border border-white/5">
-                 <CheckCircle2 className="w-5 h-5 text-emerald-400 mr-3" />
-                 Face ID Integration Active
-              </div>
-              <div className="flex items-center text-slate-300 text-sm font-medium bg-slate-950/40 p-3 rounded-xl border border-white/5">
-                 <CheckCircle2 className="w-5 h-5 text-emerald-400 mr-3" />
-                 Real-time PPE Scanning
-              </div>
-           </div>
+        <div className="flex flex-col items-center mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="w-16 h-16 bg-slate-900/80 border border-slate-700/50 rounded-[1.25rem] flex items-center justify-center mb-5 shadow-[0_0_30px_rgba(79,70,229,0.2)]">
+            <Fingerprint className="w-8 h-8 text-indigo-400" />
+          </div>
+          <h1 className="text-3xl font-black uppercase tracking-widest text-white">WORKER CHECK-IN</h1>
+          <p className="text-slate-400 font-mono text-xs mt-3 uppercase tracking-widest px-4 py-1.5 bg-slate-900/50 rounded-full border border-slate-800">
+            Manual Entry Contingency
+          </p>
         </div>
 
-        {/* Right Side Form */}
-        <div className="w-full md:w-1/2 p-8 sm:p-12 lg:p-16 flex flex-col justify-center">
+        <div className="w-full bg-slate-900/60 backdrop-blur-xl rounded-[2.5rem] border border-slate-800 p-8 shadow-2xl overflow-hidden relative animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150">
+          <div className="absolute top-0 inset-x-0 h-1 bg-linear-to-r from-transparent via-indigo-500/50 to-transparent"></div>
           
-          <div className="flex flex-col items-center mb-10 text-center">
-            <div className="bg-indigo-500/10 p-5 rounded-full mb-4 ring-1 ring-indigo-500/20 md:hidden">
-               <ScanFace className="w-10 h-10 text-indigo-400" />
-            </div>
-            <h2 className="text-3xl font-black tracking-widest uppercase mb-2">Worker Entry</h2>
-            <p className="text-slate-400 font-medium">Enter your credentials to begin your shift.</p>
-          </div>
-
           {error && (
-            <div className="w-full bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-2xl mb-6 text-sm flex items-center shadow-lg animate-in fade-in slide-in-from-top-2">
-               <ShieldAlert className="w-5 h-5 mr-3 shrink-0" />
-               <span className="font-semibold">{error}</span>
+            <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center gap-3 text-red-400 animate-in fade-in zoom-in-95">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <p className="text-sm font-semibold">{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="w-full space-y-6">
-            <div className="space-y-2 group">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest pl-2 group-focus-within:text-indigo-400 transition-colors">Employee ID</label>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="space-y-2 focus-within:text-indigo-400 text-slate-500 transition-colors">
+              <label className="text-[10px] font-black uppercase tracking-widest ml-1">Employee ID</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                  <UserCircle className="h-6 w-6 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
-                </div>
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5" />
                 <input
                   type="text"
                   required
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
-                  className="w-full bg-slate-950/80 border-2 border-slate-800 text-white rounded-2xl py-4 pl-14 pr-4 focus:outline-none focus:border-indigo-500 focus:bg-slate-900 transition-all text-lg tracking-wider"
+                  className="w-full bg-slate-950/50 border-2 border-slate-800 text-white rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-indigo-500 focus:bg-slate-900 transition-all text-lg tracking-wider font-mono placeholder:text-slate-700 placeholder:font-sans"
                   placeholder="EMP-XXXX"
                 />
               </div>
             </div>
 
-            <div className="space-y-2 group">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest pl-2 group-focus-within:text-indigo-400 transition-colors">Passcode</label>
+            <div className="space-y-2 focus-within:text-indigo-400 text-slate-500 transition-colors">
+              <label className="text-[10px] font-black uppercase tracking-widest ml-1">Passcode</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                  <Lock className="h-6 w-6 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
-                </div>
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5" />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950/80 border-2 border-slate-800 text-white rounded-2xl py-4 pl-14 pr-4 focus:outline-none focus:border-indigo-500 focus:bg-slate-900 transition-all text-lg tracking-[0.3em]"
+                  className="w-full bg-slate-950/50 border-2 border-slate-800 text-white rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-indigo-500 focus:bg-slate-900 transition-all text-lg tracking-[0.3em] font-mono placeholder:text-slate-700 placeholder:tracking-normal placeholder:font-sans"
                   placeholder="••••••••"
                 />
               </div>
@@ -148,42 +115,49 @@ export default function WorkerLogin() {
             <button
               type="submit"
               disabled={isLoading}
-              className={`w-full flex items-center justify-center py-4 px-6 rounded-2xl text-white font-black text-lg sm:text-xl uppercase tracking-widest transition-all mt-4 ${
-                isLoading
-                  ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                  : "bg-indigo-600 hover:bg-indigo-500 shadow-[0_10px_40px_rgba(79,70,229,0.3)] hover:shadow-[0_10px_60px_rgba(79,70,229,0.5)] hover:-translate-y-1 active:translate-y-0"
-              }`}
+              className="w-full relative group overflow-hidden rounded-2xl bg-indigo-600 p-[2px] transition-all hover:shadow-[0_0_40px_rgba(79,70,229,0.4)] disabled:opacity-50 disabled:pointer-events-none mt-2 active:scale-[0.98]"
             >
-              {isLoading ? "Verifying..." : (
-                <span className="flex items-center">
-                  START SCANNING <ArrowRight className="ml-3 w-6 h-6" />
-                </span>
-              )}
-            </button>
-            
-            {/* Demo Credential Hint */}
-            <div className="mt-8 pt-6 border-t border-slate-800/50">
-               <button 
-                  type="button" 
-                  onClick={fillDemo} 
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-800/30 hover:bg-slate-800/60 border border-slate-700/50 transition-all group cursor-pointer"
-               >
-                  <div className="text-left">
-                    <p className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors">Use Demo Worker Account</p>
-                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">EMP-001 · 1234</p>
-                  </div>
-                  <span className="text-[10px] font-black tracking-wider bg-indigo-500/20 text-indigo-400 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity uppercase">
-                    Auto-Fill
+              <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.2)_50%,transparent_75%)] bg-[length:250%_250%,100%_100%] animate-[shimmer_2s_infinite] opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="relative flex items-center justify-center bg-indigo-600 px-6 py-4 rounded-[14px] transition-all group-hover:bg-indigo-500">
+                {isLoading ? (
+                  <Loader2 className="w-6 h-6 animate-spin text-white" />
+                ) : (
+                  <span className="flex items-center text-white font-black text-lg uppercase tracking-widest">
+                    Access Terminal <ArrowRight className="ml-3 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </span>
-               </button>
+                )}
+              </div>
+            </button>
+
+            <div className="pt-6 mt-6 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={fillDemo}
+                className="w-full flex items-center justify-between p-4 rounded-2xl bg-slate-950/50 hover:bg-slate-800 border border-slate-800/80 transition-all group active:scale-[0.98]"
+              >
+                <div className="text-left">
+                  <p className="text-xs font-bold text-slate-300 group-hover:text-white">Use Demo Worker</p>
+                  <p className="text-[10px] text-slate-500 font-mono mt-1 tracking-widest">EMP-001 • 1234</p>
+                </div>
+                <span className="text-[10px] uppercase font-black tracking-widest bg-indigo-500/20 text-indigo-400 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                  Auto-fill
+                </span>
+              </button>
             </div>
           </form>
         </div>
       </div>
       
-      <div className="absolute bottom-6 font-mono text-slate-600 text-[10px] font-bold tracking-[0.3em] uppercase opacity-50">
-        SafeGuard AI • Node 04
+      <div className="absolute bottom-6 font-mono text-slate-600 text-[10px] font-bold tracking-[0.3em] uppercase opacity-50 text-center w-full">
+        SafeGuard AI • Kiosk Mode Active
       </div>
+      
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+      `}</style>
     </div>
   );
 }

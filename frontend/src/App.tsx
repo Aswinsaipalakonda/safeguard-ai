@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import DashboardLayout from "./components/DashboardLayout.tsx";
 import LiveMonitoring from "./pages/LiveMonitoring";
 import ViolationsLog from "./pages/ViolationsLog.tsx";
@@ -7,6 +7,7 @@ import Settings from "./pages/Settings";
 import ViolationHeatmap from "./pages/ViolationHeatmap";
 import SafetyLeaderboard from "./pages/SafetyLeaderboard";
 import Login from "./pages/Login";
+import Landing from "./pages/Landing";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // Admin Pages
@@ -33,14 +34,16 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Landing Page */}
+        <Route path="/" element={<Landing />} />
+
         {/* Public Auth Route */}
         <Route path="/login" element={<Login />} />
         <Route path="/worker-login" element={<WorkerLogin />} />
 
         {/* Admin & Supervisor Dashboard Routes (Protected) */}
         <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SUPERVISOR']} />}>
-          <Route path="/" element={<DashboardLayout />}>
-            <Route index element={<Navigate to="/monitoring" replace />} />
+          <Route element={<DashboardLayout />}>
             <Route path="monitoring" element={<LiveMonitoring />} />
             <Route path="violations" element={<ViolationsLog />} />
             <Route path="heatmap" element={<ViolationHeatmap />} />

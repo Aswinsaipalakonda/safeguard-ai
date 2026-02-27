@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Camera, AlertTriangle, FileText, Settings, ShieldAlert, Menu, X, Bell, Flame, Trophy, LayoutDashboard, Users, BarChart3, MapPin, ScrollText, ClipboardList, BrainCircuit, Clock, Map, Gamepad2, Mic, MicOff } from "lucide-react";
+import { Camera, AlertTriangle, FileText, Settings, ShieldAlert, Menu, X, Flame, Trophy, LayoutDashboard, Users, BarChart3, MapPin, ScrollText, ClipboardList, BrainCircuit, Clock, Map, Gamepad2 } from "lucide-react";
 import useStore from "../store";
-import { useVoiceCommand } from "../lib/useVoiceCommand";
+import { useVoiceAssistant } from "../lib/useVoiceAssistant";
+import VoiceAssistantPanel from "./VoiceAssistantPanel";
 
 const SidebarContent = ({ location, navItems, setIsMobileMenuOpen, handleLogout, role }: any) => (
   <>
@@ -13,10 +14,12 @@ const SidebarContent = ({ location, navItems, setIsMobileMenuOpen, handleLogout,
       <span className="text-xl font-bold tracking-wide text-white">SafeGuard AI</span>
     </div>
     
-    <div className="flex-1 px-4 py-4 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+    <div className="flex-1 px-4 py-4 overflow-y-auto">
       <nav className="space-y-2">
         {navItems.map((item: any) => {
-          const active = location.pathname.startsWith(item.path);
+          const active = item.path === "/admin"
+            ? location.pathname === "/admin"
+            : location.pathname === item.path || location.pathname.startsWith(item.path + "/");
           return (
             <Link
               key={item.path}
@@ -65,7 +68,7 @@ export default function DashboardLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const logout = useStore((state) => state.logout);
   const role = useStore((state) => state.role);
-  const voice = useVoiceCommand();
+  const voice = useVoiceAssistant();
 
   const handleLogout = () => {
     logout();
@@ -143,35 +146,46 @@ export default function DashboardLayout() {
             </div>
           </div>
           
-          <div className="flex items-center space-x-4">
-             <div className="relative bg-white border border-slate-200 rounded-full px-4 py-2 hidden md:flex items-center shadow-sm">
-                <span className="text-sm text-slate-400">Search zones, cameras...</span>
-             </div>
+          <div className="flex items-center space-x-3">
+             {/* Voice Assistant trigger */}
              {voice.supported && (
                <button
-                 onClick={voice.toggleListening}
-                 className={`relative p-2 rounded-full transition-all ${voice.isListening ? "bg-red-100 text-red-600 animate-pulse" : "text-slate-500 hover:bg-slate-100"}`}
-                 title={voice.isListening ? "Listening..." : "Voice Command"}
+                 onClick={() => { voice.setIsPanelOpen(true); }}
+                 className={`relative flex items-center gap-2 px-4 py-2 rounded-full transition-all shadow-sm border ${
+                   voice.isListening
+                     ? "bg-red-50 border-red-300 text-red-600"
+                     : "bg-white border-slate-200 text-slate-600 hover:border-purple-300 hover:text-purple-600"
+                 }`}
+                 title="Voice Assistant"
                >
-                 {voice.isListening ? <Mic size={20} /> : <MicOff size={20} />}
-                 {voice.isListening && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-ping" />}
+                 <BrainCircuit size={18} />
+                 <span className="text-sm font-medium hidden md:inline">AI Assistant</span>
+                 {voice.isListening && (
+                   <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-ping" />
+                 )}
                </button>
              )}
-             {voice.lastCommand && (
-               <span className="text-xs text-indigo-600 font-medium hidden md:block max-w-[160px] truncate">{voice.lastCommand}</span>
-             )}
-             <button className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
-                <Bell size={24} />
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-             </button>
           </div>
         </header>
 
         {/* Dynamic Outlet */}
-        <div ref={mainContentRef} className="flex-1 overflow-auto p-4 lg:p-8 pb-24 lg:pb-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <div ref={mainContentRef} className="flex-1 overflow-auto p-4 lg:p-8 pb-24 lg:pb-8">
           <Outlet />
         </div>
       </main>
+
+      {/* Voice Assistant Panel */}
+      <VoiceAssistantPanel
+        isOpen={voice.isPanelOpen}
+        onClose={() => voice.setIsPanelOpen(false)}
+        isListening={voice.isListening}
+        isProcessing={voice.isProcessing}
+        liveTranscript={voice.liveTranscript}
+        messages={voice.messages}
+        supported={voice.supported}
+        onToggleListening={voice.toggleListening}
+        onSubmitText={voice.submitTextQuery}
+      />
     </div>
   );
 }

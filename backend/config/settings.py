@@ -85,20 +85,36 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [env('REDIS_URL', default='redis://redis:6379/1')],
+            "hosts": [env('REDIS_URL', default='redis://localhost:6379/1')],
         },
     },
 }
+
+# Fallback to in-memory channels if Redis is not available
+try:
+    import redis as _redis
+    _r = _redis.from_url(env('REDIS_URL', default='redis://localhost:6379/1'))
+    _r.ping()
+except Exception:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
 
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': env.db(
-        'DATABASE_URL', 
-        default=f"postgres://{env('DB_USER', default='postgres')}:{env('DB_PASSWORD', default='password')}@{env('DB_HOST', default='localhost')}:{env('DB_PORT', default=5432)}/{env('DB_NAME', default='safeguard_ai')}"
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': env('DB_NAME', default='safeguard_ai'),
+        'USER': env('DB_USER', default='postgres'),
+        'PASSWORD': env('DB_PASSWORD', default='password'),
+        'HOST': env('DB_HOST', default='localhost'),
+        'PORT': env('DB_PORT', default='5432'),
+    }
 }
 
 

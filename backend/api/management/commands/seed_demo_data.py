@@ -51,11 +51,25 @@ class Command(BaseCommand):
             '--days', type=int, default=30,
             help='Spread violations over this many days (default: 30)',
         )
+        parser.add_argument(
+            '--clear', action='store_true',
+            help='Clear existing data before seeding',
+        )
 
     def handle(self, *args, **options):
         num_violations = options['violations']
         num_days = options['days']
         now = timezone.now()
+
+        if options['clear']:
+            self.stdout.write(self.style.WARNING("Clearing existing data..."))
+            Alert.objects.all().delete()
+            ComplianceReport.objects.all().delete()
+            Violation.objects.all().delete()
+            Worker.objects.all().delete()
+            Zone.objects.all().delete()
+            Site.objects.all().delete()
+            self.stdout.write(self.style.SUCCESS("  Cleared all data."))
 
         self.stdout.write(self.style.NOTICE("Seeding demo data..."))
 
@@ -118,6 +132,7 @@ class Command(BaseCommand):
                 minutes=random.randint(0, 59),
             )
             resolved = random.random() < 0.65  # 65% resolved
+            resolved_at = created_at + timedelta(minutes=random.randint(2, 120)) if resolved else None
             v = Violation.objects.create(
                 worker=worker,
                 ppe_type=ppe_type,
@@ -125,22 +140,24 @@ class Command(BaseCommand):
                 camera_id=zone.camera_ids[0] if zone.camera_ids else "CAM-001",
                 confidence=round(random.uniform(0.72, 0.99), 2),
                 image_path=f"violations/{created_at.strftime('%Y%m%d')}/{ppe_type}_{worker.employee_code}.jpg",
-                resolved_at=created_at + timedelta(minutes=random.randint(2, 120)) if resolved else None,
-                created_at=created_at,
+                resolved_at=resolved_at,
             )
+            # Force-set created_at (auto_now_add ignores passed value)
+            Violation.objects.filter(pk=v.pk).update(created_at=created_at)
             violations_created += 1
 
             # Create alerts for ~70% of violations
             if random.random() < 0.7:
                 level = random.choices([1, 2, 3, 4, 5, 6], weights=[30, 25, 20, 12, 8, 5])[0]
                 channels = ['dashboard', 'push', 'wristband', 'call', 'lockout']
-                Alert.objects.create(
+                a = Alert.objects.create(
                     violation=v,
                     level=level,
                     channel=channels[min(level - 1, len(channels) - 1)],
-                    sent_at=created_at,
                     acknowledged_at=created_at + timedelta(minutes=random.randint(1, 30)) if resolved else None,
                 )
+                # Force-set sent_at (auto_now_add ignores passed value)
+                Alert.objects.filter(pk=a.pk).update(sent_at=created_at)
 
         self.stdout.write(f"  Violations: {violations_created}")
         self.stdout.write(f"  Alerts: {Alert.objects.count()}")

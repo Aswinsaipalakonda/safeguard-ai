@@ -1,7 +1,7 @@
 import { DownloadCloud, BarChart3, ShieldCheck, TrendingUp, CheckCircle2, FileText, Calendar, PieChart } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart as RPieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { useEffect, useState } from "react";
-import api from "../lib/api";
+import { analyticsAPI, reportsAPI, type DashboardStats } from "../lib/api";
 import useStore from "../store";
 
 const DEMO_TREND_DATA = [
@@ -34,10 +34,18 @@ const DEMO_ZONE_DATA = [
   { name: "Control Room", violations: 3, compliance: 99 },
 ];
 
+const PPE_COLORS: Record<string, string> = {
+  helmet: "#ef4444", vest: "#f97316", harness: "#eab308",
+  goggles: "#3b82f6", gloves: "#8b5cf6", boots: "#06b6d4",
+  respirator: "#ec4899", earplug: "#14b8a6",
+};
+const DEFAULT_COLOR = "#64748b";
+
 export default function ComplianceReports() {
   const [data, setData] = useState<any[]>([]);
-  const [ppeData] = useState(DEMO_PPE_BREAKDOWN);
-  const [zoneData] = useState(DEMO_ZONE_DATA);
+  const [ppeData, setPpeData] = useState(DEMO_PPE_BREAKDOWN);
+  const [zoneData, setZoneData] = useState(DEMO_ZONE_DATA);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [reportTab, setReportTab] = useState<"trend" | "ppe" | "zones">("trend");
   const [generating, setGenerating] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
@@ -49,24 +57,52 @@ export default function ComplianceReports() {
   };
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchAll = async () => {
       try {
-        const response = await api.get("analytics/compliance/");
-        if (!response.data || response.data.length === 0) throw new Error("empty");
-        setData(response.data);
+        const [compRes, statsRes, heatRes] = await Promise.all([
+          analyticsAPI.compliance(),
+          analyticsAPI.dashboardStats(),
+          analyticsAPI.heatmap(7),
+        ]);
+        // Trend data
+        if (compRes.data && compRes.data.length > 0) setData(compRes.data);
+        else setData(DEMO_TREND_DATA);
+        // Stats
+        setStats(statsRes.data);
+        // PPE breakdown from stats
+        if (statsRes.data.ppe_breakdown?.length) {
+          setPpeData(statsRes.data.ppe_breakdown.map((p: any, i: number) => ({
+            name: p.ppe_type.charAt(0).toUpperCase() + p.ppe_type.slice(1),
+            value: p.count,
+            color: PPE_COLORS[p.ppe_type.toLowerCase()] || Object.values(PPE_COLORS)[i % Object.values(PPE_COLORS).length] || DEFAULT_COLOR,
+          })));
+        }
+        // Zone data from heatmap
+        if (heatRes.data.zones?.length) {
+          setZoneData(heatRes.data.zones.map((z: any) => ({
+            name: z.zone.length > 14 ? z.zone.slice(0, 14) + '…' : z.zone,
+            violations: z.violations,
+            compliance: Math.round(100 - z.intensity * 100),
+          })));
+        }
       } catch {
         setData(DEMO_TREND_DATA);
       }
     };
-    fetchData();
+    fetchAll();
   }, [token]);
 
-  const handleGeneratePDF = () => {
+  const handleGeneratePDF = async () => {
     setGenerating(true);
+    try {
+      await reportsAPI.generateDGMS();
+      showToast("DGMS Report generated on server!");
+    } catch {
+      // Fallback: generate client-side
+    }
     setTimeout(() => {
       setGenerating(false);
-      // Create a simple demo PDF download
-      const content = `DGMS COMPLIANCE REPORT\n${"=".repeat(50)}\nGenerated: ${new Date().toLocaleString()}\n\nWeekly Safety Index: 91.2%\nTotal Violations: 67\nResolved: 58 (86.6%)\nInsurance Risk Score: A-\n\n${"=".repeat(50)}\n7-DAY TREND\n${data.map((d: any) => `${d.name}: ${d.compliance}% compliance, ${d.violations} violations`).join("\n")}\n\n${"=".repeat(50)}\nTOP VIOLATION TYPES\n${ppeData.map((p) => `${p.name}: ${p.value} incidents`).join("\n")}\n\n${"=".repeat(50)}\nZONE BREAKDOWN\n${zoneData.map((z) => `${z.name}: ${z.violations} violations, ${z.compliance}% compliance`).join("\n")}\n\nReport prepared by SafeGuard AI - DGMS Compliance Engine\nRef: DGMS/2025/AUTO/${Math.floor(Math.random() * 9000 + 1000)}`;
+      const content = `DGMS COMPLIANCE REPORT\n${"=".repeat(50)}\nGenerated: ${new Date().toLocaleString()}\n\nWeekly Safety Index: ${avgCompliance}%\nTotal Violations: ${totalViolations}\nInsurance Risk Score: A-\n\n${"=".repeat(50)}\n7-DAY TREND\n${data.map((d: any) => `${d.name}: ${d.compliance}% compliance, ${d.violations} violations`).join("\n")}\n\n${"=".repeat(50)}\nTOP VIOLATION TYPES\n${ppeData.map((p) => `${p.name}: ${p.value} incidents`).join("\n")}\n\n${"=".repeat(50)}\nZONE BREAKDOWN\n${zoneData.map((z) => `${z.name}: ${z.violations} violations, ${z.compliance}% compliance`).join("\n")}\n\nReport prepared by SafeGuard AI - DGMS Compliance Engine\nRef: DGMS/2025/AUTO/${Math.floor(Math.random() * 9000 + 1000)}`;
       const blob = new Blob([content], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -142,8 +178,8 @@ export default function ComplianceReports() {
 
         <div className="bg-white border border-slate-100 rounded-[2rem] p-6 shadow-sm flex flex-col">
           <span className="text-xs font-bold text-slate-400 tracking-wider mb-4 uppercase">Top Violation Type</span>
-          <div className="text-2xl font-bold text-red-500 mb-2 mt-auto">Helmet Missing</div>
-          <p className="text-slate-500 text-sm">Excavation Area A</p>
+          <div className="text-2xl font-bold text-red-500 mb-2 mt-auto">{stats?.ppe_breakdown?.[0]?.ppe_type ? stats.ppe_breakdown[0].ppe_type.charAt(0).toUpperCase() + stats.ppe_breakdown[0].ppe_type.slice(1) : "Helmet Missing"}</div>
+          <p className="text-slate-500 text-sm">{stats?.zone_stats?.[0]?.zone || "Excavation Area A"}</p>
         </div>
         
         <div className="bg-linear-to-br from-[#1a1443] to-[#2c1555] border border-indigo-900 rounded-[2rem] p-6 shadow-lg flex flex-col text-white">
@@ -156,8 +192,8 @@ export default function ComplianceReports() {
       {/* Report Tabs */}
       <div className="flex items-center space-x-2 bg-white rounded-full p-1.5 border border-slate-100 shadow-sm w-max">
         {([
-          { id: "trend" as const, label: "7-Day Trend", icon: BarChart3 },
           { id: "ppe" as const, label: "PPE Breakdown", icon: PieChart },
+          { id: "trend" as const, label: "7-Day Trend", icon: BarChart3 },
           { id: "zones" as const, label: "Zone Analysis", icon: Calendar },
         ] as const).map((tab) => (
           <button

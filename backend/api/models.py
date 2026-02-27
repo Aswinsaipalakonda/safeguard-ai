@@ -41,6 +41,15 @@ class Worker(models.Model):
     def __str__(self):
         return self.name
 
+class Attendance(models.Model):
+    worker = models.ForeignKey(Worker, on_delete=models.CASCADE, related_name='attendances')
+    check_in_time = models.DateTimeField(auto_now_add=True)
+    zone = models.CharField(max_length=255, default='Entry Checkpoint')
+    status = models.CharField(max_length=50, default='Present')
+    
+    def __str__(self):
+        return f"{self.worker.name} - {self.check_in_time.date()}"
+
 class Violation(models.Model):
     class PPEType(models.TextChoices):
         HELMET = 'helmet', 'Helmet'
