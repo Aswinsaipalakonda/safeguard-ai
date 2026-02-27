@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
-import { Trophy, Star, Shield, Medal, Flame, Crown } from "lucide-react";
+import { Trophy, Star, Shield, Medal, Flame, Crown, Activity } from "lucide-react";
 import api from "../lib/api";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Avatar, AvatarFallback } from "../components/ui/avatar";
+import { Badge } from "../components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { Progress } from "../components/ui/progress";
 
-interface Badge {
+interface BadgeType {
   name: string;
   icon: string;
   desc: string;
@@ -17,7 +22,7 @@ interface LeaderboardEntry {
   stars: number;
   total_violations: number;
   resolved: number;
-  badges: Badge[];
+  badges: BadgeType[];
   streak_days: number;
   language: string;
 }
@@ -53,23 +58,21 @@ export default function SafetyLeaderboard() {
     };
     api.get(`/analytics/leaderboard/?days=${days}`)
       .then((res) => {
-        if (res.data && res.data.leaderboard && res.data.leaderboard.length > 0) {
+        if (res.data?.leaderboard?.length > 0) {
           setData(res.data);
         } else {
           setData(fallback);
         }
       })
-      .catch(() => {
-        setData(fallback);
-      })
+      .catch(() => setData(fallback))
       .finally(() => setLoading(false));
   }, [days]);
 
   const getRankDisplay = (rank: number) => {
-    if (rank === 1) return <Crown className="w-6 h-6 text-yellow-500" />;
-    if (rank === 2) return <Medal className="w-6 h-6 text-slate-400" />;
-    if (rank === 3) return <Medal className="w-6 h-6 text-amber-600" />;
-    return <span className="text-lg font-bold text-slate-400">#{rank}</span>;
+    if (rank === 1) return <Crown className="w-5 h-5 text-amber-500" />;
+    if (rank === 2) return <Medal className="w-5 h-5 text-slate-400" />;
+    if (rank === 3) return <Medal className="w-5 h-5 text-amber-700" />;
+    return <span className="font-bold text-slate-400">#{rank}</span>;
   };
 
   const getScoreColor = (score: number) => {
@@ -79,150 +82,194 @@ export default function SafetyLeaderboard() {
     return "text-red-500";
   };
 
-  const getScoreBarColor = (score: number) => {
-    if (score >= 95) return "from-emerald-400 to-emerald-600";
-    if (score >= 85) return "from-blue-400 to-blue-600";
-    if (score >= 70) return "from-amber-400 to-amber-600";
-    return "from-red-400 to-red-600";
-  };
+  const getInitials = (name: string) => name.split(" ").map((n) => n[0]).join("");
 
   return (
-    <div className="space-y-6 font-sans">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-yellow-500 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/20">
-            <Trophy className="w-6 h-6 text-white" />
+    <div className="space-y-6 container mx-auto p-4 md:p-6 lg:p-8 animate-in fade-in zoom-in-95 duration-500">
+      
+      {/* Header Card */}
+      <Card className="border-0 shadow-lg bg-linear-to-r from-slate-900 to-indigo-950 overflow-hidden relative">
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-500/20 rounded-full blur-[80px]" />
+        <CardContent className="p-8 sm:p-10 flex flex-col md:flex-row justify-between items-start md:items-center relative z-10 gap-6">
+          <div className="flex items-center space-x-6">
+            <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/10 shadow-[0_0_30px_rgba(79,70,229,0.3)] shrink-0">
+              <Trophy className="w-8 h-8 text-amber-400" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-black text-white tracking-wide mb-1 flex items-center gap-3">
+                Safety Leaderboard
+                <Badge variant="secondary" className="bg-indigo-500/30 text-indigo-200 border-indigo-500/30">Live Updates</Badge>
+              </h1>
+              <p className="text-indigo-200 text-sm font-medium">Gamified safety tracking & compliance ranks</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800 tracking-wide">Safety Leaderboard</h1>
-            <p className="text-slate-500 text-sm">Gamified worker safety rankings with badges</p>
+          
+          <div className="flex bg-slate-900/50 p-1.5 rounded-xl border border-white/10 backdrop-blur-md">
+            {[7, 14, 30].map((d) => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all uppercase tracking-wider ${
+                  days === d
+                    ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                {d} Days
+              </button>
+            ))}
           </div>
-        </div>
-        <div className="flex items-center space-x-2">
-          {[7, 14, 30].map((d) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
-                days === d
-                  ? "bg-amber-500 text-white shadow-lg shadow-amber-500/30"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {d}D
-            </button>
-          ))}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Top 3 Podium */}
       {data && data.leaderboard.length >= 3 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
           {[data.leaderboard[1], data.leaderboard[0], data.leaderboard[2]].map((worker, idx) => {
             const podiumOrder = [2, 1, 3];
             const rank = podiumOrder[idx];
             const isGold = rank === 1;
-            const heights = ["h-40", "h-52", "h-36"];
-            const gradients = [
-              "from-slate-300 to-slate-400",
-              "from-amber-300 to-yellow-500",
-              "from-amber-600 to-amber-700",
-            ];
-
+            
+            // Re-styling the podium cards with Shadcn approach
             return (
-              <div key={worker.worker_id} className="flex flex-col items-center">
-                <div className={`w-16 h-16 ${isGold ? "w-20 h-20" : ""} bg-gradient-to-br ${gradients[idx]} rounded-full flex items-center justify-center shadow-xl mb-3 ${isGold ? "ring-4 ring-yellow-300 ring-offset-2" : ""}`}>
-                  <span className="text-2xl font-black text-white">{worker.name.charAt(0)}</span>
-                </div>
-                <p className="font-bold text-slate-800 text-sm text-center">{worker.name}</p>
-                <div className="flex items-center space-x-0.5 my-1">
-                  {Array.from({ length: worker.stars }).map((_, i) => (
-                    <Star key={i} className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                  ))}
-                </div>
-                <p className={`text-xl font-black ${getScoreColor(worker.safety_score)}`}>{worker.safety_score}</p>
-                <div className="flex flex-wrap justify-center gap-1 mt-1">
-                  {worker.badges.slice(0, 2).map((b, i) => (
-                    <span key={i} className="text-xs bg-slate-100 px-2 py-0.5 rounded-full" title={b.desc}>
-                      {b.icon} {b.name}
-                    </span>
-                  ))}
-                </div>
-                <div className={`w-full ${heights[idx]} bg-gradient-to-t ${gradients[idx]} rounded-t-2xl mt-3 flex items-end justify-center pb-4`}>
-                  <span className="text-3xl font-black text-white/80">#{rank}</span>
-                </div>
-              </div>
+              <Card key={worker.worker_id} className={`relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${isGold ? 'border-amber-200 shadow-amber-500/10 md:-mt-8' : 'border-slate-200 shadow-sm'}`}>
+                {isGold && <div className="absolute top-0 inset-x-0 h-1 bg-linear-to-r from-amber-300 to-yellow-500" />}
+                <CardHeader className="text-center pb-2 pt-6">
+                  <div className="mx-auto block mb-4 relative">
+                    <Avatar className={`w-20 h-20 mx-auto ${isGold ? 'ring-4 ring-amber-100 ring-offset-2' : ''} border-2 border-slate-100 shadow-md`}>
+                       <AvatarFallback className={`text-2xl font-black text-white ${isGold ? 'bg-linear-to-br from-amber-400 to-yellow-500' : rank === 2 ? 'bg-linear-to-br from-slate-300 to-slate-400' : 'bg-linear-to-br from-amber-600 to-amber-700'}`}>
+                          {getInitials(worker.name)}
+                       </AvatarFallback>
+                    </Avatar>
+                    {isGold && <Crown className="w-8 h-8 text-yellow-500 absolute -top-4 -right-2 drop-shadow-sm rotate-12" />}
+                  </div>
+                  <CardTitle className="text-xl font-bold text-slate-800">{worker.name}</CardTitle>
+                  <CardDescription className="text-xs font-mono">{worker.employee_code}</CardDescription>
+                </CardHeader>
+                <CardContent className="text-center">
+                  <div className="flex items-center justify-center space-x-1 my-2">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star key={i} className={`w-4 h-4 ${i < worker.stars ? "text-amber-400 fill-amber-400" : "text-slate-200"}`} />
+                    ))}
+                  </div>
+                  <div className={`text-4xl font-black my-4 ${getScoreColor(worker.safety_score)}`}>
+                    {worker.safety_score}
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2 mt-4 min-h-[32px]">
+                    {worker.badges.slice(0, 2).map((b, i) => (
+                      <Badge key={i} variant="outline" className="bg-slate-50 text-slate-600 capitalize py-1 text-[10px]" title={b.desc}>
+                        <span className="mr-1">{b.icon}</span> {b.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
       )}
 
-      {/* Full Leaderboard */}
+      {/* Full Leaderboard Table */}
       {data && (
-        <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm">
-          <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center space-x-2">
-            <Shield className="w-5 h-5 text-indigo-500" />
-            <span>Full Rankings</span>
-            <span className="text-xs text-slate-400 ml-auto">{data.total_workers} workers</span>
-          </h2>
-          <div className="space-y-3">
-            {data.leaderboard.map((worker) => (
-              <div key={worker.worker_id} className={`flex items-center p-4 rounded-2xl transition-all hover:shadow-md ${worker.rank <= 3 ? "bg-gradient-to-r from-amber-50 to-white border border-amber-100" : "bg-slate-50/50 border border-slate-100"}`}>
-                {/* Rank */}
-                <div className="w-12 flex items-center justify-center shrink-0">
-                  {getRankDisplay(worker.rank)}
-                </div>
-
-                {/* Avatar */}
-                <div className="w-10 h-10 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm ml-2 shrink-0">
-                  {worker.name.split(" ").map(n => n[0]).join("")}
-                </div>
-
-                {/* Info */}
-                <div className="ml-4 flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
-                    <p className="font-bold text-slate-800 truncate">{worker.name}</p>
-                    <span className="text-[10px] text-slate-400 font-mono">{worker.employee_code}</span>
-                  </div>
-                  <div className="flex items-center space-x-3 mt-1">
-                    <div className="flex items-center space-x-0.5">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star key={i} className={`w-3 h-3 ${i < worker.stars ? "text-amber-400 fill-amber-400" : "text-slate-200"}`} />
-                      ))}
-                    </div>
-                    <span className="text-[10px] text-slate-400 flex items-center">
-                      <Flame className="w-3 h-3 text-orange-400 mr-0.5" />
-                      {worker.streak_days}d streak
-                    </span>
-                    {worker.badges.map((b, i) => (
-                      <span key={i} className="text-xs" title={b.desc}>{b.icon}</span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Score Bar */}
-                <div className="w-32 mx-4 hidden md:block">
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full bg-gradient-to-r ${getScoreBarColor(worker.safety_score)} rounded-full transition-all duration-1000`}
-                      style={{ width: `${worker.safety_score}%` }} />
-                  </div>
-                </div>
-
-                {/* Score */}
-                <div className="text-right shrink-0">
-                  <p className={`text-xl font-black ${getScoreColor(worker.safety_score)}`}>{worker.safety_score}</p>
-                  <p className="text-[10px] text-slate-400">{worker.total_violations} violations</p>
-                </div>
+        <Card className="border-slate-200 shadow-sm overflow-hidden">
+          <CardHeader className="bg-slate-50/50 border-b border-slate-100 flex flex-row items-center justify-between py-5">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-indigo-100 rounded-lg">
+                 <Shield className="w-5 h-5 text-indigo-600" />
               </div>
-            ))}
-          </div>
-        </div>
+              <div>
+                 <CardTitle className="text-lg">Full Operational Rankings</CardTitle>
+                 <CardDescription>Comprehensive tracking across all {data.total_workers} active workers</CardDescription>
+              </div>
+            </div>
+            <Activity className="w-5 h-5 text-slate-300" />
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-slate-50">
+                <TableRow>
+                  <TableHead className="w-16 text-center">Rank</TableHead>
+                  <TableHead className="w-80">Worker Profile</TableHead>
+                  <TableHead className="hidden md:table-cell">Achievement</TableHead>
+                  <TableHead className="hidden lg:table-cell text-center">Current Streak</TableHead>
+                  <TableHead className="hidden md:table-cell w-48">Compliance Score</TableHead>
+                  <TableHead className="text-right pr-6 w-32">Total Score</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.leaderboard.map((worker) => (
+                  <TableRow key={worker.worker_id} className={`group ${worker.rank <= 3 ? 'bg-amber-50/10' : ''}`}>
+                    <TableCell className="text-center align-middle font-medium">
+                      <div className="flex justify-center">{getRankDisplay(worker.rank)}</div>
+                    </TableCell>
+                    
+                    <TableCell>
+                      <div className="flex items-center space-x-4">
+                        <Avatar className={`w-10 h-10 ${worker.rank <= 3 ? 'ring-2 ring-indigo-100 ring-offset-2' : ''}`}>
+                          <AvatarFallback className="bg-indigo-50 text-indigo-600 font-bold text-xs">
+                             {getInitials(worker.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-bold text-slate-800 text-sm">{worker.name}</p>
+                          <p className="text-xs text-slate-400 font-mono mt-0.5">{worker.employee_code}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+
+                    <TableCell className="hidden md:table-cell">
+                       <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center space-x-1">
+                             {Array.from({ length: 5 }).map((_, i) => (
+                               <Star key={i} className={`w-3.5 h-3.5 ${i < worker.stars ? "text-amber-400 fill-amber-400" : "text-slate-200 fill-slate-50"}`} />
+                             ))}
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                             {worker.badges.slice(0, 3).map((b, i) => (
+                               <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0 bg-slate-100 text-slate-500 font-medium" title={b.desc}>
+                                 <span className="mr-1">{b.icon}</span> {b.name}
+                               </Badge>
+                             ))}
+                          </div>
+                       </div>
+                    </TableCell>
+
+                    <TableCell className="hidden lg:table-cell text-center">
+                      <Badge variant="outline" className={`px-3 py-1 bg-white ${worker.streak_days > 10 ? 'border-orange-200 text-orange-600' : 'border-slate-200 text-slate-500'}`}>
+                        <Flame className={`w-3.5 h-3.5 mr-1.5 ${worker.streak_days > 10 ? 'text-orange-500 fill-orange-500' : 'text-slate-400'}`} />
+                        {worker.streak_days} Days
+                      </Badge>
+                    </TableCell>
+
+                    <TableCell className="hidden md:table-cell">
+                      <div className="flex flex-col gap-2">
+                        <Progress 
+                           value={worker.safety_score} 
+                           className={`h-2 ${worker.safety_score >= 95 ? '[&>div]:bg-emerald-500' : worker.safety_score >= 85 ? '[&>div]:bg-blue-500' : worker.safety_score >= 70 ? '[&>div]:bg-amber-500' : '[&>div]:bg-rose-500'}`} 
+                        />
+                        <div className="flex justify-between text-[10px] text-slate-500 uppercase font-bold tracking-wider">
+                           <span>{worker.total_violations} Violations</span>
+                           <span className="text-emerald-600">{worker.resolved} Resolved</span>
+                        </div>
+                      </div>
+                    </TableCell>
+
+                    <TableCell className="text-right pr-6 align-middle">
+                      <div className={`text-xl font-black ${getScoreColor(worker.safety_score)}`}>
+                         {worker.safety_score}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="w-10 h-10 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin" />
+        <div className="flex items-center justify-center py-32 w-full h-full absolute inset-0 bg-white/50 backdrop-blur-sm z-50">
+          <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin shadow-xl" />
         </div>
       )}
     </div>

@@ -63,6 +63,15 @@ export default function LiveMonitoring() {
     setTimeout(() => {
       setActiveViolations((prev) => prev.filter((id) => id !== cam.id));
     }, 4000);
+    // Randomly auto-resolve ~40% of violations after 8-15 seconds
+    if (Math.random() < 0.4) {
+      const resolveDelay = Math.random() * 7000 + 8000;
+      setTimeout(() => {
+        setViolationEvents((prev) => prev.map((e) => e.id === event.id ? { ...e, resolved: true } : e));
+        setResolvedCount((prev) => prev + 1);
+        setComplianceRate((prev) => Math.min(99, prev + Math.random() * 0.5));
+      }, resolveDelay);
+    }
   }, [violationEvents.length]);
 
   // Auto-simulation every 6-10 seconds
@@ -74,18 +83,19 @@ export default function LiveMonitoring() {
     return () => clearInterval(interval);
   }, [simulationActive, generateViolation]);
 
-  // Generate initial events
+  // Generate initial events with a mix of resolved and active
   useEffect(() => {
-    const initial: ViolationEvent[] = Array.from({ length: 5 }, (_, i) => ({
-      id: `V-${1038 + i}`,
+    const resolvedPattern = [false, true, false, true, false, true, false, true];
+    const initial: ViolationEvent[] = Array.from({ length: 8 }, (_, i) => ({
+      id: `V-${1030 + i}`,
       camera: CAMERAS[i % CAMERAS.length].id,
       cameraName: CAMERAS[i % CAMERAS.length].name,
-      worker: DEMO_WORKERS[i],
-      ppe: DEMO_PPE[i],
-      zone: DEMO_ZONES[i],
+      worker: DEMO_WORKERS[i % DEMO_WORKERS.length],
+      ppe: DEMO_PPE[i % DEMO_PPE.length],
+      zone: DEMO_ZONES[i % DEMO_ZONES.length],
       confidence: Math.floor(Math.random() * 10 + 88),
-      time: new Date(Date.now() - i * 300000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      resolved: i > 2,
+      time: new Date(Date.now() - i * 180000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      resolved: resolvedPattern[i],
     }));
     setViolationEvents(initial);
   }, []);
