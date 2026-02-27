@@ -10,7 +10,7 @@ const api = axios.create({
 // JWT interceptor
 api.interceptors.request.use((config) => {
   const token = useStore.getState().token;
-  if (token) {
+  if (token && !token.startsWith('demo-jwt')) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -182,6 +182,16 @@ export interface ComplianceReport {
   created_at: string;
 }
 
+export interface Attendance {
+  id: number;
+  worker: number;
+  worker_name: string;
+  employee_code: string;
+  check_in_time: string;
+  zone: string;
+  status: string;
+}
+
 export interface DashboardStats {
   today_violations: number;
   today_resolved: number;
@@ -296,11 +306,30 @@ export interface KioskFaceScanResult {
   employee_code: string;
   stars: number;
   compliance: number;
+  similarity: number;
+}
+
+export interface KioskEnrollResult {
+  status: string;
+  employee_code: string;
+  name: string;
+  embedding_dim: number;
+}
+
+export interface PPEDetection {
+  class: string;
+  label: string;
+  confidence: number;
+  bbox: [number, number, number, number]; // normalised x1, y1, x2, y2  [0-1]
+  is_violation: boolean;
 }
 
 export interface KioskPPEResult {
   approved: boolean;
   missing: string[];
+  detections: PPEDetection[];
+  image_width: number;
+  image_height: number;
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
@@ -429,10 +458,35 @@ export const analyticsAPI = {
 // ─── Kiosk ───────────────────────────────────────────────────────────────────
 
 export const kioskAPI = {
+  /** Authenticate worker by employee_code + passcode (PIN) — returns real JWT */
+  login: (employee_code: string, passcode: string) =>
+    api.post<{ access: string; refresh: string; role: string; employee_code: string; name: string }>(
+      'kiosk/auth/', { employee_code, passcode }
+    ),
+  /** Enroll a worker's face — stores embedding in DB */
+  enrollFace: (employee_code: string, image: string) =>
+    api.post<KioskEnrollResult>('kiosk/enroll-face/', { employee_code, image }),
+  /** Verify face against enrolled embeddings — returns matched worker */
   scanFace: (image: string) =>
     api.post<KioskFaceScanResult>('kiosk/scan-face/', { image }),
   verifyPPE: (image: string, workerId?: number) =>
     api.post<KioskPPEResult>('kiosk/verify-ppe/', { image, worker_id: workerId }),
+  /** Record attendance + optional violations after PPE check */
+  checkin: (data: {
+    employee_code: string;
+    approved: boolean;
+    missing: string[];
+    detections: PPEDetection[];
+    zone?: string;
+  }) => api.post<{
+    status: string;
+    attendance_id: number;
+    worker: string;
+    employee_code: string;
+    approved: boolean;
+    violations: { id: number; ppe_type: string }[];
+    compliance_rate: number;
+  }>('kiosk/checkin/', data),
 };
 
 // ─── Camera ──────────────────────────────────────────────────────────────────
@@ -468,4 +522,48 @@ export const operationsAPI = {
     api.post('notifications/send/', data),
   notifyWorker: (workerId: number, ppeType: string, zone: string) =>
     api.post(`workers/${workerId}/notify/`, { ppe_type: ppeType, zone }),
+};
+
+// ─── Admin Dashboard ─────────────────────────────────────────────────────────
+
+export interface AdminDashboardData {
+  workers: { total: number; active: number; on_site: number };
+  cameras: { total: number; online: number; recording: number };
+  violations: { total: number; resolved: number; resolution_rate: number };
+  active_alerts: number;
+  daily_trend: { day: string; date: string; violations: number; resolved: number; compliance: number }[];
+  zone_data: { zone: string; compliance: number; violations: number; risk: string }[];
+  ppe_breakdown: { name: string; value: number; color: string }[];
+  hourly_violations: { hour: string; count: number }[];
+  recent_activity: { id: number; action: string; detail: string; time: string; type: string }[];
+}
+
+export interface SystemAnalyticsData {
+  monthly_trend: { month: string; violations: number; resolved: number; incidents: number; compliance: number }[];
+  shift_data: { shift: string; violations: number; workers: number; avg: number; peak: string }[];
+  worker_performance: { name: string; violations: number; compliance: number; streak: number; trend: string }[];
+  zone_radar: { zone: string; current: number; previous: number }[];
+  ppe_trend: Record<string, number | string>[];
+  response_time: { range: string; count: number; pct: number }[];
+}
+
+export interface AuditLogEvent {
+  id: number;
+  timestamp: string;
+  user: string;
+  role: string;
+  action: string;
+  category: string;
+  detail: string;
+  ip: string;
+  severity: string;
+}
+
+export const adminAPI = {
+  dashboard: (period?: number) =>
+    api.get<AdminDashboardData>('admin/dashboard/', { params: period ? { period } : {} }),
+  systemAnalytics: (months?: number) =>
+    api.get<SystemAnalyticsData>('analytics/system/', { params: months ? { months } : {} }),
+  auditLog: (params?: { limit?: number; category?: string; severity?: string }) =>
+    api.get<{ events: AuditLogEvent[]; total: number }>('audit-log/', { params }),
 };

@@ -116,3 +116,122 @@ def get_pipeline():
     if pipeline is None:
         pipeline = DetectionPipeline()
     return pipeline
+
+# ---------------------------------------------------------------------------
+# Singleton PPE model loader (avoids reloading the 52 MB model on every request)
+# ---------------------------------------------------------------------------
+_ppe_model = None
+_ppe_model_path = os.path.join(os.path.dirname(__file__), 'models', 'yolov8m-ppe.pt')
+
+
+def _get_ppe_model():
+    global _ppe_model
+    if _ppe_model is None:
+        from ultralytics import YOLO
+        _ppe_model = YOLO(_ppe_model_path)
+    return _ppe_model
+
+
+# Label mapping:  model class name  →  (ui_label, is_violation)
+_LABEL_MAP = {
+    'helmet':     ('Helmet',      False),
+    'no_helmet':  ('No Helmet',   True),
+    'goggles':    ('Goggles',     False),
+    'no_goggles': ('No Goggles',  True),
+    'glove':      ('Gloves',      False),
+    'no_glove':   ('No Gloves',   True),
+    'mask':       ('Mask',        False),
+    'no_mask':    ('No Mask',     True),
+    'shoes':      ('Boots',       False),
+    'no_shoes':   ('No Boots',    True),
+}
+
+# Which positive→negative pairs exist for "missing" logic
+_VIOLATION_PAIRS = {
+    'helmet':  'no_helmet',
+    'goggles': 'no_goggles',
+    'glove':   'no_glove',
+    'shoes':   'no_shoes',
+    'mask':    'no_mask',
+}
+
+
+def verify_single_image_ppe(image_base64: str) -> dict:
+    """Verifies PPE on a single image encoded as base64 using the YOLOv8m-ppe model.
+    Returns approval status, missing items and **bounding-box detections** with
+    normalised [0-1] coordinates so the frontend can draw overlays."""
+    import base64 as _b64
+    import cv2
+    import numpy as np
+
+    model = _get_ppe_model()
+
+    # ── Decode image ──────────────────────────────────────────────────────
+    if "," in image_base64:
+        image_base64 = image_base64.split(",", 1)[1]
+    img_bytes = _b64.b64decode(image_base64)
+    np_arr = np.frombuffer(img_bytes, np.uint8)
+    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+    if img is None:
+        return {"approved": False, "missing": ["Invalid Image"], "detections": [],
+                "image_width": 0, "image_height": 0}
+
+    img_h, img_w = img.shape[:2]
+
+    # ── Run inference ─────────────────────────────────────────────────────
+    results = model(img, verbose=False, conf=0.35)
+
+    detections = []
+    found_classes = set()    # positive class names seen
+    violation_classes = set()  # negative class names seen
+    CONF_THRESHOLD = 0.35
+
+    for box in results[0].boxes:
+        conf = float(box.conf[0])
+        cls_id = int(box.cls[0])
+        raw_name = model.names[cls_id]
+
+        if conf < CONF_THRESHOLD:
+            continue
+
+        # Bounding box in pixel coords → normalise to [0, 1]
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        bbox_norm = [
+            round(x1 / img_w, 4),
+            round(y1 / img_h, 4),
+            round(x2 / img_w, 4),
+            round(y2 / img_h, 4),
+        ]
+
+        ui_label, is_violation = _LABEL_MAP.get(raw_name, (raw_name, False))
+
+        detections.append({
+            "class": raw_name,
+            "label": ui_label,
+            "confidence": round(conf, 3),
+            "bbox": bbox_norm,
+            "is_violation": is_violation,
+        })
+
+        if is_violation:
+            violation_classes.add(raw_name)
+        else:
+            found_classes.add(raw_name)
+
+    # ── Determine missing items ───────────────────────────────────────────
+    ui_missing = []
+    for pos, neg in _VIOLATION_PAIRS.items():
+        if neg in violation_classes and pos not in found_classes:
+            human = _LABEL_MAP[pos][0].lower()
+            ui_missing.append(human)
+
+    approved = len(ui_missing) == 0
+
+    return {
+        "approved": approved,
+        "missing": ui_missing,
+        "detections": detections,
+        "image_width": img_w,
+        "image_height": img_h,
+    }

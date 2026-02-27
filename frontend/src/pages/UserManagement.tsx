@@ -1,33 +1,48 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Users, UserPlus, Search, MoreHorizontal, Shield, ShieldCheck, HardHat,
-  CheckCircle2, XCircle, Edit3, Trash2, X, Eye, ChevronDown, Download, Mail, Phone
+  CheckCircle2, XCircle, Edit3, Trash2, X, Eye, ChevronDown, Download, Mail, Phone, Loader2
 } from "lucide-react";
+import { workersAPI, type Worker } from "../lib/api";
 
-/* ── Demo Users ── */
-const DEMO_USERS = [
-  { id: 1, name: "Aarav Patel", email: "aarav.patel@safeguard.ai", role: "ADMIN", emp: "EMP-001", phone: "+91 98765 43210", department: "Plant Management", status: "active", lastLogin: "2 min ago", compliance: 100, avatar: "AP" },
-  { id: 2, name: "Neha Sharma", email: "neha.sharma@safeguard.ai", role: "SUPERVISOR", emp: "EMP-012", phone: "+91 98765 43211", department: "Safety Division", status: "active", lastLogin: "15 min ago", compliance: 98, avatar: "NS" },
-  { id: 3, name: "Rajesh Kumar", email: "rajesh.kumar@safeguard.ai", role: "WORKER", emp: "EMP-034", phone: "+91 98765 43212", department: "Assembly Line", status: "active", lastLogin: "1 hr ago", compliance: 94, avatar: "RK" },
-  { id: 4, name: "Priya Nair", email: "priya.nair@safeguard.ai", role: "WORKER", emp: "EMP-089", phone: "+91 98765 43213", department: "Welding Zone", status: "active", lastLogin: "30 min ago", compliance: 91, avatar: "PN" },
-  { id: 5, name: "Suresh Reddy", email: "suresh.reddy@safeguard.ai", role: "WORKER", emp: "EMP-045", phone: "+91 98765 43214", department: "Loading Dock", status: "inactive", lastLogin: "2 days ago", compliance: 87, avatar: "SR" },
-  { id: 6, name: "Mohammed Ismail", email: "m.ismail@safeguard.ai", role: "SUPERVISOR", emp: "EMP-008", phone: "+91 98765 43215", department: "Underground Shaft", status: "active", lastLogin: "5 min ago", compliance: 96, avatar: "MI" },
-  { id: 7, name: "Vikram Singh", email: "v.singh@safeguard.ai", role: "WORKER", emp: "EMP-067", phone: "+91 98765 43216", department: "Excavation", status: "active", lastLogin: "45 min ago", compliance: 89, avatar: "VS" },
-  { id: 8, name: "Karthik Bhat", email: "k.bhat@safeguard.ai", role: "WORKER", emp: "EMP-078", phone: "+91 98765 43217", department: "Processing Plant", status: "suspended", lastLogin: "5 days ago", compliance: 72, avatar: "KB" },
-  { id: 9, name: "Deepak Yadav", email: "d.yadav@safeguard.ai", role: "WORKER", emp: "EMP-091", phone: "+91 98765 43218", department: "Assembly Line", status: "active", lastLogin: "20 min ago", compliance: 95, avatar: "DY" },
-  { id: 10, name: "Anand Verma", email: "a.verma@safeguard.ai", role: "SUPERVISOR", emp: "EMP-005", phone: "+91 98765 43219", department: "Blasting Zone", status: "active", lastLogin: "10 min ago", compliance: 97, avatar: "AV" },
-  { id: 11, name: "Lakshmi Devi", email: "l.devi@safeguard.ai", role: "WORKER", emp: "EMP-102", phone: "+91 98765 43220", department: "Processing Plant", status: "active", lastLogin: "1 hr ago", compliance: 93, avatar: "LD" },
-  { id: 12, name: "Ramesh Gupta", email: "r.gupta@safeguard.ai", role: "WORKER", emp: "EMP-055", phone: "+91 98765 43221", department: "Loading Dock", status: "active", lastLogin: "3 hr ago", compliance: 85, avatar: "RG" },
-];
+/* ── Map Worker → Display format ── */
+interface UserDisplay {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  emp: string;
+  phone: string;
+  department: string;
+  status: string;
+  lastLogin: string;
+  compliance: number;
+  avatar: string;
+  violations: number;
+}
 
-type UserType = typeof DEMO_USERS[0];
+const workerToDisplay = (w: Worker): UserDisplay => ({
+  id: w.id,
+  name: w.name,
+  email: `${w.name.toLowerCase().replace(/\s+/g, '.')}@safeguard.ai`,
+  role: "WORKER",
+  emp: w.employee_code,
+  phone: "+91 00000 00000",
+  department: "Operations",
+  status: w.is_active ? "active" : "inactive",
+  lastLogin: new Date(w.enrolled_at).toLocaleDateString(),
+  compliance: Math.round(w.compliance_rate),
+  avatar: w.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2),
+  violations: w.violation_count,
+});
 
 export default function UserManagement() {
-  const [users, setUsers] = useState(DEMO_USERS);
+  const [users, setUsers] = useState<UserDisplay[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserDisplay | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
   const [showDropdown, setShowDropdown] = useState<number | null>(null);
@@ -37,6 +52,23 @@ export default function UserManagement() {
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(""), 3000); };
 
+  // Fetch workers from API
+  useEffect(() => {
+    const fetchWorkers = async () => {
+      setLoading(true);
+      try {
+        const res = await workersAPI.list({ page_size: 100 });
+        const mapped = res.data.results.map(workerToDisplay);
+        setUsers(mapped);
+      } catch {
+        // keep empty state
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchWorkers();
+  }, []);
+
   const filtered = users.filter(u => {
     const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()) || u.emp.toLowerCase().includes(search.toLowerCase());
     const matchRole = roleFilter === "ALL" || u.role === roleFilter;
@@ -44,34 +76,58 @@ export default function UserManagement() {
     return matchSearch && matchRole && matchStatus;
   });
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUser.name || !newUser.email) return;
-    const user: UserType = {
-      id: users.length + 1,
-      name: newUser.name,
-      email: newUser.email,
-      role: newUser.role,
-      emp: `EMP-${String(users.length + 100).padStart(3, '0')}`,
-      phone: newUser.phone || "+91 00000 00000",
-      department: newUser.department || "Unassigned",
-      status: "active",
-      lastLogin: "Never",
-      compliance: 100,
-      avatar: newUser.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2),
-    };
-    setUsers(prev => [user, ...prev]);
-    setShowAddModal(false);
-    setNewUser({ name: "", email: "", role: "WORKER", department: "", phone: "" });
-    showToast(`${user.name} added successfully`);
+    try {
+      const res = await workersAPI.create({ name: newUser.name, employee_code: `EMP-${String(Date.now()).slice(-3)}` });
+      const display = workerToDisplay(res.data);
+      display.email = newUser.email;
+      display.role = newUser.role;
+      display.department = newUser.department || "Unassigned";
+      display.phone = newUser.phone || "+91 00000 00000";
+      setUsers(prev => [display, ...prev]);
+      setShowAddModal(false);
+      setNewUser({ name: "", email: "", role: "WORKER", department: "", phone: "" });
+      showToast(`${display.name} added successfully`);
+    } catch {
+      // Fallback: add to local state
+      const user: UserDisplay = {
+        id: Date.now(),
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        emp: `EMP-${String(Date.now()).slice(-3)}`,
+        phone: newUser.phone || "+91 00000 00000",
+        department: newUser.department || "Unassigned",
+        status: "active",
+        lastLogin: "Never",
+        compliance: 100,
+        avatar: newUser.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2),
+        violations: 0,
+      };
+      setUsers(prev => [user, ...prev]);
+      setShowAddModal(false);
+      setNewUser({ name: "", email: "", role: "WORKER", department: "", phone: "" });
+      showToast(`${user.name} added (offline)`);
+    }
   };
 
-  const handleToggleStatus = (id: number) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, status: u.status === "active" ? "suspended" : "active" } : u));
+  const handleToggleStatus = async (id: number) => {
+    const user = users.find(u => u.id === id);
+    if (!user) return;
+    const newActive = user.status !== "active";
+    try {
+      await workersAPI.update(id, { is_active: newActive });
+    } catch { /* update locally anyway */ }
+    setUsers(prev => prev.map(u => u.id === id ? { ...u, status: newActive ? "active" : "inactive" } : u));
     setShowDropdown(null);
     showToast("User status updated");
   };
 
-  const handleDeleteUser = (id: number) => {
+  const handleDeleteUser = async (id: number) => {
+    try {
+      await workersAPI.delete(id);
+    } catch { /* remove locally anyway */ }
     setUsers(prev => prev.filter(u => u.id !== id));
     setShowDropdown(null);
     showToast("User removed");
@@ -121,6 +177,7 @@ export default function UserManagement() {
           <p className="text-sm text-slate-500 mt-1">Manage workers, supervisors & admin access</p>
         </div>
         <div className="flex items-center gap-3">
+          {loading && <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />}
           <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm">
             <Download className="w-4 h-4" />Export CSV
           </button>
@@ -286,11 +343,8 @@ export default function UserManagement() {
             <div className="bg-slate-50 rounded-xl p-4 mb-6">
               <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mb-2">Recent Violations</p>
               <div className="space-y-2">
-                {selectedUser.compliance < 90 ? (
-                  <>
-                    <div className="flex justify-between text-xs"><span className="text-slate-600">Helmet Missing — Welding Zone</span><span className="text-red-500 font-bold">2 days ago</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-slate-600">Vest Unfastened — Assembly Line</span><span className="text-red-500 font-bold">5 days ago</span></div>
-                  </>
+                {selectedUser.violations > 0 ? (
+                  <p className="text-xs text-amber-600 font-medium">{selectedUser.violations} violations recorded</p>
                 ) : (
                   <p className="text-xs text-green-600 font-medium">No recent violations — excellent record!</p>
                 )}

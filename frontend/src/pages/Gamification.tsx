@@ -81,11 +81,8 @@ const rarityColors: Record<string, string> = {
   Legendary: "bg-amber-100 text-amber-700",
 };
 
-/* ── Weekly XP chart data ── */
-const weeklyXP = [
-  { day: "Mon", xp: 320 }, { day: "Tue", xp: 480 }, { day: "Wed", xp: 250 },
-  { day: "Thu", xp: 550 }, { day: "Fri", xp: 410 }, { day: "Sat", xp: 180 }, { day: "Sun", xp: 90 },
-];
+/* ── Weekly XP chart data (derived from workers in component) ── */
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const barColors = ["#818cf8", "#6366f1", "#a78bfa", "#6366f1", "#818cf8", "#c4b5fd", "#ddd6fe"];
 
 const DarkTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number }>; label?: string }) => {
@@ -125,6 +122,14 @@ export default function Gamification() {
     totalBadges: workers.reduce((a, w) => a + w.badges, 0),
     topStreak: workers.length > 0 ? Math.max(...workers.map(w => w.streak)) : 0,
   };
+
+  // Derive weekly XP distribution from worker data (simulated daily earning curve)
+  const totalWeekXP = stats.totalXP;
+  const weeklyDistribution = [0.14, 0.19, 0.11, 0.22, 0.17, 0.10, 0.07]; // weightings per day
+  const weeklyXP = DAYS.map((day, i) => ({
+    day,
+    xp: Math.round(totalWeekXP * weeklyDistribution[i] / Math.max(workers.length, 1)),
+  }));
 
   return (
     <div className="space-y-6 font-sans relative">

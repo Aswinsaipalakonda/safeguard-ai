@@ -12,6 +12,7 @@ router.register(r'violations', views.ViolationViewSet)
 router.register(r'alerts', views.AlertViewSet)
 router.register(r'reports', views.ComplianceReportViewSet)
 router.register(r'users', views.UserViewSet)
+router.register(r'attendance', views.AttendanceViewSet)
 
 urlpatterns = [
     # Authentication
@@ -26,8 +27,11 @@ urlpatterns = [
     # Analytics
     path('analytics/compliance/', views.analytics_compliance, name='analytics-compliance'),
     # Kiosk
+    path('kiosk/auth/', views.kiosk_auth, name='kiosk-auth'),
+    path('kiosk/enroll-face/', views.kiosk_enroll_face, name='kiosk-enroll-face'),
     path('kiosk/scan-face/', views.kiosk_scan_face, name='kiosk-scan-face'),
     path('kiosk/verify-ppe/', views.kiosk_verify_ppe, name='kiosk-verify-ppe'),
+    path('kiosk/checkin/', views.kiosk_checkin, name='kiosk-checkin'),
     # Worker notifications
     path('workers/<int:pk>/notify/', views.worker_notify, name='worker-notify'),
     # Report generation

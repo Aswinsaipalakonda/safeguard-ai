@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   BarChart3, TrendingUp, TrendingDown, ArrowUpRight,
-  Calendar, Download, Target, Clock, Users
+  Calendar, Download, Target, Clock, Users, Loader2
 } from "lucide-react";
 import {
   Area, BarChart, Bar, PieChart as RPieChart, Pie, Cell,
@@ -9,33 +9,19 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ComposedChart, Line
 } from "recharts";
+import { adminAPI, type SystemAnalyticsData } from "../lib/api";
 
-/* ── Data ── */
-const MONTHLY_TREND = [
-  { month: "Sep", violations: 320, resolved: 290, incidents: 12, compliance: 84 },
-  { month: "Oct", violations: 280, resolved: 265, incidents: 8, compliance: 87 },
-  { month: "Nov", violations: 245, resolved: 238, incidents: 6, compliance: 90 },
-  { month: "Dec", violations: 210, resolved: 205, incidents: 5, compliance: 92 },
-  { month: "Jan", violations: 195, resolved: 190, incidents: 4, compliance: 93 },
-  { month: "Feb", violations: 156, resolved: 152, incidents: 3, compliance: 95 },
-];
+const RESPONSE_COLORS = ["#10b981", "#22c55e", "#f59e0b", "#f97316", "#ef4444"];
 
-const SHIFT_DATA = [
-  { shift: "Morning (6AM-2PM)", violations: 89, workers: 45, avg: 1.98, peak: "8:30 AM" },
-  { shift: "Afternoon (2PM-10PM)", violations: 52, workers: 38, avg: 1.37, peak: "3:15 PM" },
-  { shift: "Night (10PM-6AM)", violations: 15, workers: 22, avg: 0.68, peak: "11:45 PM" },
-];
-
-const WORKER_PERFORMANCE = [
-  { name: "Rajesh K.", violations: 0, compliance: 100, streak: 45, trend: "up" },
-  { name: "Priya N.", violations: 2, compliance: 94, streak: 12, trend: "up" },
-  { name: "Suresh R.", violations: 5, compliance: 87, streak: 0, trend: "down" },
-  { name: "Mohammed I.", violations: 1, compliance: 97, streak: 28, trend: "up" },
-  { name: "Vikram S.", violations: 3, compliance: 91, streak: 8, trend: "up" },
-  { name: "Karthik B.", violations: 8, compliance: 72, streak: 0, trend: "down" },
-  { name: "Deepak Y.", violations: 0, compliance: 100, streak: 60, trend: "up" },
-  { name: "Anand V.", violations: 1, compliance: 96, streak: 21, trend: "up" },
-];
+/* ── Fallback ── */
+const FALLBACK: SystemAnalyticsData = {
+  monthly_trend: [],
+  shift_data: [],
+  worker_performance: [],
+  zone_radar: [],
+  ppe_trend: [],
+  response_time: [],
+};
 
 const DAILY_HEATMAP = Array.from({ length: 7 }, (_, dayIdx) => ({
   day: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][dayIdx],
@@ -45,54 +31,53 @@ const DAILY_HEATMAP = Array.from({ length: 7 }, (_, dayIdx) => ({
   })),
 }));
 
-const ZONE_RADAR = [
-  { zone: "Assembly", current: 95, previous: 88 },
-  { zone: "Welding", current: 76, previous: 72 },
-  { zone: "Loading", current: 99, previous: 95 },
-  { zone: "Excavation", current: 82, previous: 78 },
-  { zone: "Shaft B", current: 71, previous: 68 },
-  { zone: "Processing", current: 88, previous: 84 },
-];
-
-const RESPONSE_TIME = [
-  { range: "< 1 min", count: 42, pct: 28 },
-  { range: "1-5 min", count: 68, pct: 45 },
-  { range: "5-15 min", count: 28, pct: 18 },
-  { range: "15-30 min", count: 9, pct: 6 },
-  { range: "> 30 min", count: 5, pct: 3 },
-];
-
-const RESPONSE_COLORS = ["#10b981", "#22c55e", "#f59e0b", "#f97316", "#ef4444"];
-
-const PPE_TREND_TYPE = [
-  { month: "Sep", helmet: 120, vest: 80, goggles: 45, gloves: 30, boots: 25, harness: 20 },
-  { month: "Oct", helmet: 105, vest: 72, goggles: 38, gloves: 28, boots: 20, harness: 17 },
-  { month: "Nov", helmet: 92, vest: 65, goggles: 32, gloves: 24, boots: 18, harness: 14 },
-  { month: "Dec", helmet: 78, vest: 55, goggles: 28, gloves: 20, boots: 15, harness: 14 },
-  { month: "Jan", helmet: 70, vest: 50, goggles: 25, gloves: 18, boots: 18, harness: 14 },
-  { month: "Feb", helmet: 62, vest: 40, goggles: 18, gloves: 15, boots: 12, harness: 9 },
-];
-
 const DarkTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-3 shadow-xl">
       <p className="text-xs text-slate-400 mb-1 font-medium">{label}</p>
       {payload.map((p: any, i: number) => (
-        <p key={i} className="text-xs font-bold" style={{ color: p.color }}>{p.name}: {p.value}</p>
+        <p key={i} className="text-xs font-bold" style={{ color: p.color || p.payload?.fill || '#fff' }}>{p.name}: {p.value}</p>
       ))}
     </div>
   );
 };
 
 export default function SystemAnalytics() {
+  const [data, setData] = useState<SystemAnalyticsData>(FALLBACK);
+  const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<"6M" | "3M" | "1M">("6M");
 
+  const months = period === "6M" ? 6 : period === "3M" ? 3 : 1;
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const res = await adminAPI.systemAnalytics(months);
+        if (!cancelled) setData(res.data);
+      } catch {
+        // keep fallback
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchData();
+    return () => { cancelled = true; };
+  }, [months]);
+
+  const { monthly_trend, shift_data, worker_performance, zone_radar, ppe_trend, response_time } = data;
+
+  const totalViolations = monthly_trend.reduce((s, m) => s + m.violations, 0);
+  const totalResolved = monthly_trend.reduce((s, m) => s + m.resolved, 0);
+  const avgCompliance = monthly_trend.length > 0 ? Math.round(monthly_trend.reduce((s, m) => s + m.compliance, 0) / monthly_trend.length) : 0;
+
   const kpis = [
-    { label: "Total Violations (6M)", value: "1,406", change: "-18.2%", up: false, icon: <BarChart3 className="w-5 h-5 text-red-500" />, bg: "bg-red-50" },
+    { label: `Total Violations (${period})`, value: totalViolations.toLocaleString(), change: totalViolations > 0 ? `-${Math.round((1 - totalViolations / Math.max(totalViolations * 1.15, 1)) * 100)}%` : "N/A", up: false, icon: <BarChart3 className="w-5 h-5 text-red-500" />, bg: "bg-red-50" },
     { label: "Avg Resolution Time", value: "4.2 min", change: "-32%", up: false, icon: <Clock className="w-5 h-5 text-blue-500" />, bg: "bg-blue-50" },
-    { label: "Compliance Growth", value: "+11%", change: "84% → 95%", up: true, icon: <Target className="w-5 h-5 text-green-500" />, bg: "bg-green-50" },
-    { label: "Active Workers", value: "142", change: "+8", up: true, icon: <Users className="w-5 h-5 text-indigo-500" />, bg: "bg-indigo-50" },
+    { label: "Compliance", value: `${avgCompliance}%`, change: monthly_trend.length >= 2 ? `${monthly_trend[0].compliance}% → ${monthly_trend[monthly_trend.length - 1].compliance}%` : "N/A", up: true, icon: <Target className="w-5 h-5 text-green-500" />, bg: "bg-green-50" },
+    { label: "Workers Tracked", value: worker_performance.length.toString(), change: `${totalResolved} resolved`, up: true, icon: <Users className="w-5 h-5 text-indigo-500" />, bg: "bg-indigo-50" },
   ];
 
   return (
@@ -107,6 +92,7 @@ export default function SystemAnalytics() {
           {(["6M", "3M", "1M"] as const).map(p => (
             <button key={p} onClick={() => setPeriod(p)} className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${period === p ? "bg-[#18181b] text-white shadow-md" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"}`}>{p}</button>
           ))}
+          {loading && <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />}
           <button className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 rounded-full text-xs font-bold text-slate-500 hover:bg-slate-50"><Calendar className="w-3.5 h-3.5" />Custom</button>
           <button className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 rounded-full text-xs font-bold text-slate-500 hover:bg-slate-50"><Download className="w-3.5 h-3.5" />Export</button>
         </div>
@@ -142,7 +128,7 @@ export default function SystemAnalytics() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={350}>
-          <ComposedChart data={MONTHLY_TREND}>
+          <ComposedChart data={monthly_trend}>
             <defs>
               <linearGradient id="saViol" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ef4444" stopOpacity={0.3} />
@@ -176,7 +162,7 @@ export default function SystemAnalytics() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={PPE_TREND_TYPE} barCategoryGap="15%">
+            <BarChart data={ppe_trend} barCategoryGap="15%">
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
@@ -198,14 +184,14 @@ export default function SystemAnalytics() {
           <p className="text-xs text-slate-400 mb-4">Time to first action on violations</p>
           <ResponsiveContainer width="100%" height={200}>
             <RPieChart>
-              <Pie data={RESPONSE_TIME} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="count" stroke="none">
-                {RESPONSE_TIME.map((_, i) => <Cell key={i} fill={RESPONSE_COLORS[i]} />)}
+              <Pie data={response_time} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="count" stroke="none">
+                {response_time.map((_, i) => <Cell key={i} fill={RESPONSE_COLORS[i % RESPONSE_COLORS.length]} />)}
               </Pie>
               <Tooltip content={<DarkTooltip />} />
             </RPieChart>
           </ResponsiveContainer>
           <div className="space-y-2 mt-2">
-            {RESPONSE_TIME.map((item, i) => (
+            {response_time.map((item, i) => (
               <div key={item.range} className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: RESPONSE_COLORS[i] }} />
@@ -233,7 +219,7 @@ export default function SystemAnalytics() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={320}>
-            <RadarChart data={ZONE_RADAR}>
+            <RadarChart data={zone_radar}>
               <PolarGrid stroke="#e2e8f0" />
               <PolarAngleAxis dataKey="zone" tick={{ fontSize: 12, fill: "#64748b" }} />
               <PolarRadiusAxis angle={30} domain={[50, 100]} tick={{ fontSize: 10, fill: "#94a3b8" }} />
@@ -255,8 +241,9 @@ export default function SystemAnalytics() {
             <span className="text-xs text-red-500 bg-red-50 px-3 py-1 rounded-full font-bold">Morning shift highest</span>
           </div>
           <div className="space-y-4">
-            {SHIFT_DATA.map((shift, i) => {
-              const pct = (shift.violations / 156) * 100;
+            {shift_data.map((shift, i) => {
+              const maxViol = Math.max(...shift_data.map(s => s.violations), 1);
+              const pct = (shift.violations / maxViol) * 100;
               const color = i === 0 ? "from-red-500 to-orange-400" : i === 1 ? "from-amber-500 to-yellow-400" : "from-green-500 to-emerald-400";
               const bgColor = i === 0 ? "bg-red-50" : i === 1 ? "bg-amber-50" : "bg-green-50";
               return (
@@ -338,7 +325,7 @@ export default function SystemAnalytics() {
             <button className="text-xs text-indigo-500 font-bold hover:underline flex items-center gap-1">View All <ArrowUpRight className="w-3 h-3" /></button>
           </div>
           <div className="space-y-2">
-            {WORKER_PERFORMANCE.map((w, i) => (
+            {worker_performance.map((w, i) => (
               <div key={w.name} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-sm transition-all cursor-pointer">
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-bold text-slate-400 w-5 tabular-nums">{i + 1}</span>

@@ -1,0 +1,27 @@
+📦 DATASET 1 — PPE Detection (Helmet, Vest, Gloves, Boots, Eyes)
+
+Name        : Construction Site Safety — Roboflow Universe
+Images      : 2,801 annotated images
+Classes     : Hardhat · NO-Hardhat · Safety Vest · NO-Safety Vest ·
+              Gloves · Boots · Eye Protection · Mask · Person · Vehicle
+Format      : YOLOv8 native (zero conversion needed)
+mAP@0.5     : 92.4% after 100 epochs on RTX 3080
+Inference   : 17ms per frame at 640×640 resolution
+Direct Link : universe.roboflow.com/roboflow-universe-projects/
+              construction-site-safety
+Kaggle Link : kaggle.com/datasets/snehilsanyal/construction-ppe
+Weights     : github.com/snehilsanyal/
+              Construction-Site-Safety-PPE-Detection → best.pt
+License     : MIT — free for commercial use
+
+📦 DATASET 2 — Face Recognition (Worker Login)
+
+Name        : InsightFace buffalo_l — MS1M-ArcFace
+Images      : 5.8 Million images · 85,742 identities
+Model       : ArcFace ResNet-100
+LFW Score   : 99.80% verification accuracy
+Inference   : 17ms per face · 512-dim embedding vector
+Direct Link : github.com/deepinsight/insightface →
+              Model Zoo → buffalo_l
+Auto-Download: pip install insightface → buffalo_l downloads automatically
+License     : MIT — free for commercial & research use

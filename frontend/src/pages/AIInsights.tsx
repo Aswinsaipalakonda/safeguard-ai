@@ -81,7 +81,7 @@ const DarkTooltip = ({ active, payload, label }: any) => {
     <div className="bg-[#1a1a2e] text-white text-xs rounded-xl px-4 py-2 shadow-xl border border-slate-700">
       <p className="font-bold mb-1">{label}</p>
       {payload.map((p: any) => (
-        <p key={p.dataKey} style={{ color: p.color || p.stroke }}>{p.name}: {typeof p.value === "number" ? p.value.toFixed(1) : p.value}</p>
+        <p key={p.dataKey} style={{ color: p.color || p.payload?.fill || p.stroke || '#fff' }}>{p.name}: {typeof p.value === "number" ? p.value.toFixed(1) : p.value}</p>
       ))}
     </div>
   );

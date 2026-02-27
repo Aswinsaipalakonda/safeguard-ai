@@ -35,6 +35,10 @@ export default function Login() {
         
         if (userRole === 'WORKER') {
           navigate("/kiosk");
+        } else if (userRole === 'SUPERVISOR') {
+          navigate("/monitoring");
+        } else if (userRole === 'ADMIN' || userRole === 'SUPERADMIN') {
+          navigate("/admin");
         } else {
           navigate("/");
         }
@@ -48,7 +52,7 @@ export default function Login() {
       }
       if (username === "supervisor@safeguard.com" && password === "admin123") {
         login("demo-jwt-token-safeguard-2025", "SUPERVISOR");
-        navigate("/");
+        navigate("/monitoring");
         return;
       }
       if (username === "EMP-001" && password === "1234") {

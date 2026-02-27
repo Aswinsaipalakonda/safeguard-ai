@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { User, Lock, AlertTriangle, ArrowRight, Fingerprint, Loader2 } from "lucide-react";
 import useStore from "../store";
-import { authAPI } from "../lib/api";
+import { kioskAPI } from "../lib/api";
 
 export default function WorkerLogin() {
   const [employeeId, setEmployeeId] = useState("");
@@ -18,29 +18,22 @@ export default function WorkerLogin() {
     setError("");
 
     try {
-      const response = await authAPI.login(employeeId, password);
+      const response = await kioskAPI.login(employeeId, password);
 
       if (response.data.access) {
-        const token = response.data.access;
-        const userRole = response.data.role || 'WORKER';
-        
-        if (userRole !== 'WORKER') {
-          setError("Access Denied. Only authorized personnel can use this terminal.");
-          setIsLoading(false);
-          return;
-        }
-
-        login(token, userRole);
+        // Store refresh token for JWT interceptor
+        localStorage.setItem('refresh_token', response.data.refresh);
+        // Store worker identity for kiosk screens (enrollment, etc.)
+        localStorage.setItem('safeguard_worker', JSON.stringify({
+          employee_code: response.data.employee_code || employeeId,
+          name: response.data.name || '',
+        }));
+        login(response.data.access, 'WORKER');
         navigate("/kiosk");
       }
-    } catch {
-      // Fallback: allow demo login without backend
-      if (employeeId === "EMP-001" && password === "1234") {
-        login("demo-jwt-token-worker-2025", "WORKER");
-        navigate("/kiosk");
-        return;
-      }
-      setError("No active account found with the given credentials.");
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || "No active worker found with the given credentials.";
+      setError(msg);
     } finally {
       setIsLoading(false);
     }

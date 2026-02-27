@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Save, Bell, Camera, User, Lock, ShieldAlert, CheckCircle2, XCircle, RefreshCw, Key, Smartphone } from "lucide-react";
+import { Save, Bell, Camera, User, Lock, ShieldAlert, CheckCircle2, XCircle, RefreshCw, Key, Smartphone, HardHat } from "lucide-react";
 import { zonesAPI } from "../lib/api";
 
 const FALLBACK_CAMERAS = [
@@ -11,13 +11,35 @@ const FALLBACK_CAMERAS = [
 ];
 
 export default function Settings() {
+  // Load persisted settings from localStorage
+  const loadSettings = () => {
+    try {
+      const raw = localStorage.getItem("safeguard_settings");
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return null;
+  };
+  const saved = loadSettings();
+
   const [activeTab, setActiveTab] = useState("general");
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [confidenceThreshold, setConfidenceThreshold] = useState(85);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(saved?.notificationsEnabled ?? true);
+  const [emailSummaries, setEmailSummaries] = useState(saved?.emailSummaries ?? true);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(saved?.confidenceThreshold ?? 85);
+  const [faceVerification, setFaceVerification] = useState(saved?.faceVerification ?? true);
+  const [profileName, setProfileName] = useState(saved?.profileName ?? "Alan Johnson");
+  const [profileEmail, setProfileEmail] = useState(saved?.profileEmail ?? "alan.j@manufacturingalpha.com");
   const [isSaving, setIsSaving] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
-  const [twoFA, setTwoFA] = useState(true);
+  const [twoFA, setTwoFA] = useState(saved?.twoFA ?? true);
   const [cameras, setCameras] = useState(FALLBACK_CAMERAS);
+
+  // PPE Rules
+  const [reqHelmet, setReqHelmet] = useState(saved?.reqHelmet ?? true);
+  const [reqVest, setReqVest] = useState(saved?.reqVest ?? true);
+  const [reqGloves, setReqGloves] = useState(saved?.reqGloves ?? true);
+  const [reqBoots, setReqBoots] = useState(saved?.reqBoots ?? false);
+  const [reqEyes, setReqEyes] = useState(saved?.reqEyes ?? true);
+  const [reqMask, setReqMask] = useState(saved?.reqMask ?? false);
 
   // Fetch zones → build camera list from zone camera_ids
   useEffect(() => {
@@ -48,10 +70,17 @@ export default function Settings() {
 
   const handleSave = () => {
     setIsSaving(true);
+    try {
+      localStorage.setItem("safeguard_settings", JSON.stringify({
+        notificationsEnabled, emailSummaries, confidenceThreshold,
+        faceVerification, profileName, profileEmail, twoFA,
+        reqHelmet, reqVest, reqGloves, reqBoots, reqEyes, reqMask,
+      }));
+    } catch { /* quota exceeded — ignore */ }
     setTimeout(() => {
       setIsSaving(false);
       showToast("Settings saved successfully!");
-    }, 800);
+    }, 400);
   };
 
   return (
@@ -121,6 +150,12 @@ export default function Settings() {
             >
               <Lock size={18} /><span>Security</span>
             </button>
+            <button 
+              onClick={() => setActiveTab("ppe")}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-colors ${activeTab === 'ppe' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <HardHat size={18} /><span>PPE Rules</span>
+            </button>
           </nav>
         </div>
 
@@ -132,11 +167,11 @@ export default function Settings() {
                <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">Full Name</label>
-                    <input type="text" defaultValue="Alan Johnson" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                    <input type="text" value={profileName} onChange={e => setProfileName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">Email Address</label>
-                    <input type="email" defaultValue="alan.j@manufacturingalpha.com" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                    <input type="email" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">Role</label>
@@ -167,7 +202,7 @@ export default function Settings() {
                   
                   <div className="pt-4 border-t border-slate-100">
                     <label className="flex items-center space-x-3 cursor-pointer">
-                      <input type="checkbox" defaultChecked className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                      <input type="checkbox" checked={faceVerification} onChange={() => setFaceVerification(!faceVerification)} className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                       <span className="text-slate-700 font-medium">Enable Face Verification Integration</span>
                     </label>
                     <p className="text-xs text-slate-500 mt-1 ml-8">Automatically cross-reference unknown faces with the worker registry.</p>
@@ -195,7 +230,7 @@ export default function Settings() {
                         <p className="font-semibold text-slate-800">Email Summaries</p>
                         <p className="text-xs text-slate-500">Daily digest of violation reports.</p>
                      </div>
-                     <input type="checkbox" defaultChecked className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                     <input type="checkbox" checked={emailSummaries} onChange={() => setEmailSummaries(!emailSummaries)} className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                   </label>
                </div>
             </div>
@@ -247,6 +282,37 @@ export default function Settings() {
                <button onClick={() => showToast("Camera discovery scan initiated...")} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-sm text-slate-500 font-medium hover:border-indigo-300 hover:text-indigo-500 transition-colors">
                  + Add New Camera
                </button>
+            </div>
+          )}
+
+          {activeTab === "ppe" && (
+            <div className="space-y-6 max-w-xl">
+               <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-2">Global PPE Requirements</h3>
+               <p className="text-sm text-slate-500 mb-6">Select which personal protective equipment items are strictly required for entry. Kiosks will block workers missing any required items.</p>
+               
+               <div className="space-y-3">
+                 {[
+                   { id: "reqHelmet", label: "Hard Hat / Helmet", state: reqHelmet, set: setReqHelmet, icon: "⛑️" },
+                   { id: "reqVest", label: "Hi-Vis Safety Vest", state: reqVest, set: setReqVest, icon: "🦺" },
+                   { id: "reqGloves", label: "Safety Gloves", state: reqGloves, set: setReqGloves, icon: "🧤" },
+                   { id: "reqBoots", label: "Steel-toe Boots", state: reqBoots, set: setReqBoots, icon: "👢" },
+                   { id: "reqEyes", label: "Safety Goggles / Glasses", state: reqEyes, set: setReqEyes, icon: "🥽" },
+                   { id: "reqMask", label: "Face Mask / Respirator", state: reqMask, set: setReqMask, icon: "😷" },
+                 ].map(item => (
+                   <label key={item.id} className={`flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-colors ${item.state ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`}>
+                     <div className="flex items-center space-x-4">
+                       <span className="text-2xl">{item.icon}</span>
+                       <div>
+                         <p className={`font-bold ${item.state ? 'text-indigo-900' : 'text-slate-700'}`}>{item.label}</p>
+                         <p className={`text-xs ${item.state ? 'text-indigo-600' : 'text-slate-500'}`}>{item.state ? "Required for Entry" : "Optional"}</p>
+                       </div>
+                     </div>
+                     <div className={`w-12 h-6 rounded-full p-1 transition-colors ${item.state ? 'bg-indigo-600' : 'bg-slate-300'}`} onClick={(e) => { e.preventDefault(); item.set(!item.state); }}>
+                       <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ${item.state ? 'translate-x-6' : 'translate-x-0'}`} />
+                     </div>
+                   </label>
+                 ))}
+               </div>
             </div>
           )}
 

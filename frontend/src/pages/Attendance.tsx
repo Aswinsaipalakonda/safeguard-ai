@@ -1,12 +1,7 @@
 import { useState, useEffect } from "react";
-import {
-  Users, UserCheck, UserX, Clock, Download, Search, ChevronDown,
-  CheckCircle2, AlertTriangle, CalendarDays, ArrowUpDown
-} from "lucide-react";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
-} from "recharts";
-import { workersAPI, type Worker } from "../lib/api";
+import { Clock, Download, Search, ChevronDown, CheckCircle2, AlertTriangle, CalendarDays, ArrowUpDown, Users, UserCheck, UserX } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import api, { type PaginatedResponse, type Attendance as AttendanceType } from "../lib/api";
 
 /* ── Demo attendance data ── */
 const DEMO_WORKERS = [
@@ -27,16 +22,45 @@ const DEMO_WORKERS = [
   { id: 15, name: "Ganesh Patel", code: "EMP-015", dept: "Safety", zone: "Zone A", checkIn: "—", shift: "Day", ppeStatus: "—", status: "absent", avatar: "GP", compliance: 92 },
 ];
 
-const HOURLY_DATA = [
-  { hour: "6 AM", count: 4 },
-  { hour: "6:30", count: 8 },
-  { hour: "7 AM", count: 18 },
-  { hour: "7:30", count: 12 },
-  { hour: "8 AM", count: 5 },
-  { hour: "8:30", count: 2 },
-  { hour: "9 AM", count: 1 },
-  { hour: "9:30", count: 0 },
-];
+function buildHourlyData(workerList: typeof DEMO_WORKERS) {
+  const hourlyCount: Record<number, number> = {};
+  let minHour = 24;
+  let maxHour = -1;
+
+  for (const w of workerList) {
+    if (w.checkIn === "—" || w.checkIn === "—" || w.status === "absent") continue;
+    const match = w.checkIn.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+    if (!match) continue;
+    let h = parseInt(match[1]);
+    const isPM = match[3] && match[3].toUpperCase() === "PM";
+    if (isPM && h !== 12) h += 12;
+    if (!isPM && h === 12) h = 0;
+
+    hourlyCount[h] = (hourlyCount[h] || 0) + 1;
+    if (h < minHour) minHour = h;
+    if (h > maxHour) maxHour = h;
+  }
+
+  if (minHour === 24) {
+    return [
+      { hour: "6 AM", count: 0 },
+      { hour: "7 AM", count: 0 },
+      { hour: "8 AM", count: 0 },
+      { hour: "9 AM", count: 0 }
+    ];
+  }
+
+  const counts: { hour: string; count: number }[] = [];
+  const start = Math.max(0, minHour - 1);
+  const end = Math.min(23, maxHour + 1);
+
+  for (let h = start; h <= end; h++) {
+    const label = h === 0 ? "12 AM" : h < 12 ? `${h} AM` : h === 12 ? "12 PM" : `${h - 12} PM`;
+    counts.push({ hour: label, count: hourlyCount[h] || 0 });
+  }
+
+  return counts;
+}
 
 const DarkTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -44,52 +68,85 @@ const DarkTooltip = ({ active, payload, label }: any) => {
     <div className="bg-[#1a1a2e] text-white text-xs rounded-xl px-4 py-2 shadow-xl border border-slate-700">
       <p className="font-bold">{label}</p>
       {payload.map((p: any) => (
-        <p key={p.dataKey} style={{ color: p.color }}>{p.name}: {p.value}</p>
+        <p key={p.dataKey} style={{ color: p.color || p.payload?.fill || '#fff' }}>{p.name}: {p.value}</p>
       ))}
     </div>
   );
 };
 
-function mapWorker(w: Worker, idx: number) {
-  const zones = ["Zone A", "Zone B", "Zone C", "Zone D", "Zone E", "Zone F"];
-  const depts = ["Excavation", "Conveyor", "Processing", "Loading", "Safety", "Underground", "Blasting"];
-  const initials = w.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
-  const h = 6 + Math.floor(idx * 7 / 15);
-  const m = (30 + idx * 7) % 60;
-  const isLate = h >= 7 && m >= 15;
-  return {
-    id: w.id, name: w.name, code: w.employee_code,
-    dept: depts[idx % depts.length], zone: zones[idx % zones.length],
-    checkIn: w.is_active ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} AM` : "\u2014",
-    shift: "Day", ppeStatus: w.is_active ? (w.compliance_rate >= 85 ? "compliant" : "violation") : "\u2014",
-    status: !w.is_active ? "absent" : isLate ? "late" : "active",
-    avatar: initials, compliance: Math.round(w.compliance_rate),
-  };
-}
-
 export default function Attendance() {
   const [workers, setWorkers] = useState(DEMO_WORKERS);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [sortField, setSortField] = useState<"name" | "checkIn" | "compliance">("checkIn");
+  const [sortField, setSortField] = useState<"name" | "checkIn" | "compliance">("name");
   const [sortAsc, setSortAsc] = useState(true);
-  const [currentDate] = useState(new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }));
+  const currentDate = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
   useEffect(() => {
-    const fetchWorkers = async () => {
+    const fetchAttendance = async () => {
       try {
-        const res = await workersAPI.list({ page_size: 50 });
+        const res = await api.get<PaginatedResponse<AttendanceType>>("attendance/", {
+          params: { page_size: 100 }
+        });
         if (res.data.results?.length) {
-          setWorkers(res.data.results.map((w, i) => mapWorker(w, i)));
+          const apiWorkers = res.data.results.map((a, i) => {
+            const date = new Date(a.check_in_time);
+            const checkInStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+            const initials = a.worker_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+            
+            // Randomize unprovided details for the UI
+            const depts = ["Excavation", "Conveyor", "Processing"];
+            const dept = depts[i % depts.length];
+            return {
+              id: a.id,
+              name: a.worker_name,
+              code: a.employee_code,
+              dept: dept,
+              zone: a.zone,
+              checkIn: checkInStr,
+              shift: "Day",
+              ppeStatus: "compliant",
+              status: "active",
+              avatar: initials,
+              compliance: 100,
+            };
+          });
+          setWorkers(apiWorkers as any);
         }
-      } catch { /* keep demo data */ }
+      } catch {
+        // Fallback or leave as demo
+      }
     };
-    fetchWorkers();
+    fetchAttendance();
   }, []);
 
   const present = workers.filter(w => w.status !== "absent").length;
   const absent = workers.filter(w => w.status === "absent").length;
   const late = workers.filter(w => w.status === "late").length;
+  const hourlyData = buildHourlyData(workers);
+
+  // Compute average check-in time
+  const checkedIn = workers.filter(w => w.checkIn !== "\u2014" && w.checkIn !== "—");
+  const avgCheckIn = (() => {
+    if (checkedIn.length === 0) return "—";
+    const totalMin = checkedIn.reduce((sum, w) => {
+      const match = w.checkIn.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+      if (!match) return sum;
+      let h = parseInt(match[1]);
+      const m = parseInt(match[2]);
+      const isPM = match[3] && match[3].toUpperCase() === "PM";
+      if (isPM && h !== 12) h += 12;
+      if (!isPM && h === 12) h = 0;
+      return sum + h * 60 + m;
+    }, 0);
+    const avg = Math.round(totalMin / checkedIn.length);
+    let h = Math.floor(avg / 60);
+    const mm = avg % 60;
+    const ampm = h >= 12 ? "PM" : "AM";
+    if (h > 12) h -= 12;
+    if (h === 0) h = 12;
+    return `${h}:${String(mm).padStart(2, "0")} ${ampm}`;
+  })();
 
   const filtered = workers
     .filter(w => {
@@ -141,7 +198,7 @@ export default function Attendance() {
           { label: "Present Today", value: present, icon: <UserCheck className="w-5 h-5 text-emerald-500" />, bg: "bg-emerald-50", color: "text-emerald-600" },
           { label: "Absent", value: absent, icon: <UserX className="w-5 h-5 text-red-500" />, bg: "bg-red-50", color: "text-red-600" },
           { label: "Late Arrivals", value: late, icon: <Clock className="w-5 h-5 text-amber-500" />, bg: "bg-amber-50", color: "text-amber-600" },
-          { label: "Avg Check-in", value: "7:02 AM", icon: <Users className="w-5 h-5 text-indigo-500" />, bg: "bg-indigo-50", color: "text-indigo-600" },
+          { label: "Avg Check-in", value: avgCheckIn, icon: <Users className="w-5 h-5 text-indigo-500" />, bg: "bg-indigo-50", color: "text-indigo-600" },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100">
             <div className="flex items-center gap-3 mb-3">
@@ -157,7 +214,7 @@ export default function Attendance() {
       <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6">
         <h3 className="text-sm font-bold text-slate-700 mb-4">Check-in Distribution</h3>
         <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={HOURLY_DATA} barSize={32}>
+          <BarChart data={hourlyData} barSize={32}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="hour" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />

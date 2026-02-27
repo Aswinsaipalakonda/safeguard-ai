@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import User, Site, Zone, Worker, Violation, Alert, ComplianceReport
+from .models import User, Site, Zone, Worker, Violation, Alert, ComplianceReport, Attendance
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -58,6 +58,15 @@ class ViolationSerializer(serializers.ModelSerializer):
 
     def get_worker_name(self, obj):
         return obj.worker.name if obj.worker else "Unknown"
+
+
+class AttendanceSerializer(serializers.ModelSerializer):
+    worker_name = serializers.CharField(source='worker.name', read_only=True)
+    employee_code = serializers.CharField(source='worker.employee_code', read_only=True)
+
+    class Meta:
+        model = Attendance
+        fields = '__all__'
 
 
 class AlertSerializer(serializers.ModelSerializer):

@@ -1,50 +1,60 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   MapPin, Plus, Search, Edit3, Trash2, X, Camera,
   AlertTriangle, CheckCircle2, ChevronDown, Eye, Settings,
-  Wifi, WifiOff, MoreHorizontal
+  Wifi, WifiOff, MoreHorizontal, Loader2
 } from "lucide-react";
+import { zonesAPI, cameraAPI, type Zone } from "../lib/api";
 
-/* ── Demo Zones ── */
-const DEMO_ZONES = [
-  { id: 1, name: "Assembly Line A", site: "Manufacturing Plant Alpha", cameras: ["CAM-01", "CAM-02"], workers: 28, risk: "Low" as const, compliance: 95, requiredPPE: ["Helmet", "Vest", "Boots", "Goggles"], active: true, violations24h: 3, lastIncident: "2 days ago" },
-  { id: 2, name: "Welding Zone B", site: "Manufacturing Plant Alpha", cameras: ["CAM-03", "CAM-04"], workers: 15, risk: "High" as const, compliance: 76, requiredPPE: ["Helmet", "Vest", "Goggles", "Gloves", "Boots"], active: true, violations24h: 12, lastIncident: "15 min ago" },
-  { id: 3, name: "Loading Dock South", site: "Manufacturing Plant Alpha", cameras: ["CAM-05"], workers: 12, risk: "Low" as const, compliance: 99, requiredPPE: ["Helmet", "Vest", "Boots"], active: true, violations24h: 0, lastIncident: "14 days ago" },
-  { id: 4, name: "Excavation Area A", site: "Mining Site Beta", cameras: ["CAM-06", "CAM-07", "CAM-08"], workers: 22, risk: "Medium" as const, compliance: 82, requiredPPE: ["Helmet", "Vest", "Boots", "Harness", "Goggles"], active: true, violations24h: 7, lastIncident: "1 hr ago" },
-  { id: 5, name: "Underground Shaft B", site: "Mining Site Beta", cameras: ["CAM-09", "CAM-10"], workers: 18, risk: "Critical" as const, compliance: 71, requiredPPE: ["Helmet", "Vest", "Boots", "Harness", "Goggles", "Gloves"], active: true, violations24h: 15, lastIncident: "5 min ago" },
-  { id: 6, name: "Processing Plant", site: "Manufacturing Plant Alpha", cameras: ["CAM-11"], workers: 20, risk: "Medium" as const, compliance: 88, requiredPPE: ["Helmet", "Vest", "Boots", "Goggles"], active: true, violations24h: 4, lastIncident: "4 hrs ago" },
-  { id: 7, name: "Blasting Zone C", site: "Mining Site Beta", cameras: ["CAM-12", "CAM-13"], workers: 8, risk: "Critical" as const, compliance: 68, requiredPPE: ["Helmet", "Vest", "Boots", "Harness", "Goggles", "Gloves"], active: false, violations24h: 0, lastIncident: "Deactivated" },
-  { id: 8, name: "Storage Warehouse", site: "Manufacturing Plant Alpha", cameras: ["CAM-14"], workers: 10, risk: "Low" as const, compliance: 97, requiredPPE: ["Vest", "Boots"], active: true, violations24h: 1, lastIncident: "6 hrs ago" },
-];
+/* ── Display types ── */
+interface ZoneDisplay {
+  id: number;
+  name: string;
+  site: string;
+  cameras: string[];
+  workers: number;
+  risk: "Critical" | "High" | "Medium" | "Low";
+  compliance: number;
+  requiredPPE: string[];
+  active: boolean;
+  violations24h: number;
+  lastIncident: string;
+}
 
-const DEMO_CAMERAS = [
-  { id: "CAM-01", name: "Assembly Entrance", zone: "Assembly Line A", status: "online" as const, resolution: "1080p", fps: 30, lastMaintenance: "2026-01-15" },
-  { id: "CAM-02", name: "Assembly Floor", zone: "Assembly Line A", status: "online" as const, resolution: "4K", fps: 25, lastMaintenance: "2026-01-15" },
-  { id: "CAM-03", name: "Welding Bay 1", zone: "Welding Zone B", status: "online" as const, resolution: "1080p", fps: 30, lastMaintenance: "2026-02-01" },
-  { id: "CAM-04", name: "Welding Bay 2", zone: "Welding Zone B", status: "online" as const, resolution: "1080p", fps: 30, lastMaintenance: "2026-02-01" },
-  { id: "CAM-05", name: "Loading Dock", zone: "Loading Dock South", status: "online" as const, resolution: "4K", fps: 25, lastMaintenance: "2026-02-10" },
-  { id: "CAM-06", name: "Excavation North", zone: "Excavation Area A", status: "online" as const, resolution: "1080p", fps: 30, lastMaintenance: "2026-01-28" },
-  { id: "CAM-07", name: "Excavation South", zone: "Excavation Area A", status: "online" as const, resolution: "1080p", fps: 30, lastMaintenance: "2026-01-28" },
-  { id: "CAM-08", name: "Excavation Entrance", zone: "Excavation Area A", status: "online" as const, resolution: "720p", fps: 15, lastMaintenance: "2026-01-20" },
-  { id: "CAM-09", name: "Shaft Entry", zone: "Underground Shaft B", status: "online" as const, resolution: "1080p", fps: 25, lastMaintenance: "2026-02-05" },
-  { id: "CAM-10", name: "Shaft Interior", zone: "Underground Shaft B", status: "offline" as const, resolution: "720p", fps: 15, lastMaintenance: "2026-01-10" },
-  { id: "CAM-11", name: "Processing Floor", zone: "Processing Plant", status: "online" as const, resolution: "4K", fps: 25, lastMaintenance: "2026-02-15" },
-  { id: "CAM-12", name: "Blasting Perimeter", zone: "Blasting Zone C", status: "offline" as const, resolution: "1080p", fps: 30, lastMaintenance: "2025-12-20" },
-  { id: "CAM-13", name: "Blasting Safe Zone", zone: "Blasting Zone C", status: "offline" as const, resolution: "1080p", fps: 30, lastMaintenance: "2025-12-20" },
-  { id: "CAM-14", name: "Warehouse Main", zone: "Storage Warehouse", status: "online" as const, resolution: "1080p", fps: 25, lastMaintenance: "2026-02-12" },
-];
+interface CameraDisplay {
+  id: string;
+  name: string;
+  zone: string;
+  status: "online" | "offline";
+  resolution: string;
+  fps: number;
+  lastMaintenance: string;
+}
 
-type ZoneType = typeof DEMO_ZONES[0];
+const zoneToDisplay = (z: Zone): ZoneDisplay => ({
+  id: z.id,
+  name: z.name,
+  site: z.site ? `Site ${z.site}` : "Unassigned",
+  cameras: z.camera_ids || [],
+  workers: 0,
+  risk: z.is_high_risk ? "High" : "Low",
+  compliance: 90,
+  requiredPPE: z.required_ppe || [],
+  active: true,
+  violations24h: 0,
+  lastIncident: "N/A",
+});
 
 const ALL_PPE = ["Helmet", "Vest", "Boots", "Goggles", "Gloves", "Harness"];
 
 export default function ZoneManagement() {
-  const [zones, setZones] = useState(DEMO_ZONES);
-  const [cameras] = useState(DEMO_CAMERAS);
+  const [zones, setZones] = useState<ZoneDisplay[]>([]);
+  const [cameras, setCameras] = useState<CameraDisplay[]>([]);
+  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"zones" | "cameras">("zones");
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState("ALL");
-  const [selectedZone, setSelectedZone] = useState<ZoneType | null>(null);
+  const [selectedZone, setSelectedZone] = useState<ZoneDisplay | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
   const [showDropdown, setShowDropdown] = useState<number | null>(null);
@@ -52,6 +62,39 @@ export default function ZoneManagement() {
   const [newZone, setNewZone] = useState({ name: "", site: "Manufacturing Plant Alpha", risk: "Low", requiredPPE: ["Helmet", "Vest", "Boots"] });
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(""), 3000); };
+
+  // Fetch zones and cameras from API
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [zonesRes, camerasRes] = await Promise.all([
+          zonesAPI.list({ page_size: 50 }),
+          cameraAPI.list().catch(() => ({ data: { results: [] } })),
+        ]);
+        const zoneDisplays = zonesRes.data.results.map(zoneToDisplay);
+        setZones(zoneDisplays);
+
+        // Map cameras if available
+        const camData = Array.isArray(camerasRes.data) ? camerasRes.data : (camerasRes.data as any).results || [];
+        const camDisplays: CameraDisplay[] = camData.map((c: any) => ({
+          id: c.camera_id || c.id,
+          name: c.name || c.camera_id || c.id,
+          zone: c.zone || "Unknown",
+          status: c.status === "active" || c.is_active ? "online" as const : "offline" as const,
+          resolution: c.resolution || "1080p",
+          fps: c.fps || 30,
+          lastMaintenance: c.last_maintenance || "Unknown",
+        }));
+        setCameras(camDisplays);
+      } catch {
+        // keep empty
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const filteredZones = zones.filter(z => {
     const matchSearch = z.name.toLowerCase().includes(search.toLowerCase());
@@ -61,17 +104,32 @@ export default function ZoneManagement() {
 
   const filteredCameras = cameras.filter(c => c.zone.toLowerCase().includes(search.toLowerCase()) || c.name.toLowerCase().includes(search.toLowerCase()));
 
-  const handleAddZone = () => {
+  const handleAddZone = async () => {
     if (!newZone.name) return;
-    const zone: ZoneType = {
-      id: zones.length + 1, name: newZone.name, site: newZone.site, cameras: [],
-      workers: 0, risk: newZone.risk as any, compliance: 100, requiredPPE: newZone.requiredPPE,
-      active: true, violations24h: 0, lastIncident: "Never",
-    };
-    setZones(prev => [zone, ...prev]);
-    setShowAddModal(false);
-    setNewZone({ name: "", site: "Manufacturing Plant Alpha", risk: "Low", requiredPPE: ["Helmet", "Vest", "Boots"] });
-    showToast(`Zone "${zone.name}" created`);
+    try {
+      const res = await zonesAPI.create({
+        name: newZone.name,
+        required_ppe: newZone.requiredPPE,
+        is_high_risk: newZone.risk === "High" || newZone.risk === "Critical",
+      });
+      const display = zoneToDisplay(res.data);
+      display.site = newZone.site;
+      display.risk = newZone.risk as any;
+      setZones(prev => [display, ...prev]);
+      setShowAddModal(false);
+      setNewZone({ name: "", site: "Manufacturing Plant Alpha", risk: "Low", requiredPPE: ["Helmet", "Vest", "Boots"] });
+      showToast(`Zone "${display.name}" created`);
+    } catch {
+      const zone: ZoneDisplay = {
+        id: Date.now(), name: newZone.name, site: newZone.site, cameras: [],
+        workers: 0, risk: newZone.risk as any, compliance: 100, requiredPPE: newZone.requiredPPE,
+        active: true, violations24h: 0, lastIncident: "Never",
+      };
+      setZones(prev => [zone, ...prev]);
+      setShowAddModal(false);
+      setNewZone({ name: "", site: "Manufacturing Plant Alpha", risk: "Low", requiredPPE: ["Helmet", "Vest", "Boots"] });
+      showToast(`Zone "${zone.name}" created (offline)`);
+    }
   };
 
   const handleToggleZone = (id: number) => {
@@ -80,7 +138,8 @@ export default function ZoneManagement() {
     showToast("Zone status updated");
   };
 
-  const handleDeleteZone = (id: number) => {
+  const handleDeleteZone = async (id: number) => {
+    try { await zonesAPI.delete(id); } catch { /* remove locally */ }
     setZones(prev => prev.filter(z => z.id !== id));
     setShowDropdown(null);
     showToast("Zone removed");
@@ -117,9 +176,12 @@ export default function ZoneManagement() {
           <h1 className="text-2xl font-bold text-slate-800">Zone & Camera Management</h1>
           <p className="text-sm text-slate-500 mt-1">Configure safety zones, PPE rules, and camera assignments</p>
         </div>
-        <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-5 py-2.5 bg-[#18181b] text-white rounded-xl text-xs font-bold hover:bg-black transition-all shadow-md">
-          <Plus className="w-4 h-4" />Add Zone
-        </button>
+        <div className="flex items-center gap-3">
+          {loading && <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />}
+          <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-5 py-2.5 bg-[#18181b] text-white rounded-xl text-xs font-bold hover:bg-black transition-all shadow-md">
+            <Plus className="w-4 h-4" />Add Zone
+          </button>
+        </div>
       </div>
 
       {/* Stat Cards */}

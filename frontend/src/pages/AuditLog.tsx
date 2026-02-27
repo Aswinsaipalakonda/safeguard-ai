@@ -1,36 +1,15 @@
-import { useState } from "react";import React from "react";import {
+import { useState, useEffect } from "react";import React from "react";import {
   ScrollText, Search, Download, ChevronDown, User,
   Shield, Settings, AlertTriangle, Camera, Database, Cpu, CheckCircle2,
-  XCircle, Info, ArrowUpRight, RefreshCw
+  XCircle, Info, ArrowUpRight, RefreshCw, Loader2
 } from "lucide-react";
+import { adminAPI, type AuditLogEvent } from "../lib/api";
 
-/* ── Demo Audit Logs ── */
-const DEMO_LOGS = [
-  { id: 1, timestamp: "2026-02-27 14:32:18", user: "Aarav Patel", role: "ADMIN", action: "User Suspended", category: "user", detail: "Suspended worker Karthik Bhat (EMP-078) — repeated PPE violations", ip: "192.168.1.100", severity: "high" },
-  { id: 2, timestamp: "2026-02-27 14:28:05", user: "System", role: "SYSTEM", action: "Violation Escalated", category: "alert", detail: "Escalated V-1089 to Level 3 — SMS sent to safety officer", ip: "—", severity: "high" },
-  { id: 3, timestamp: "2026-02-27 14:15:42", user: "Neha Sharma", role: "SUPERVISOR", action: "Violation Resolved", category: "violation", detail: "Resolved V-1087 — Helmet missing at Welding Zone B", ip: "192.168.1.105", severity: "medium" },
-  { id: 4, timestamp: "2026-02-27 14:10:31", user: "System", role: "SYSTEM", action: "AI Model Updated", category: "system", detail: "PPE Detection model v2.4 deployed — mAP50: 94.2%, inference: 23ms", ip: "—", severity: "info" },
-  { id: 5, timestamp: "2026-02-27 13:58:22", user: "Aarav Patel", role: "ADMIN", action: "Zone Risk Upgraded", category: "zone", detail: "Underground Shaft B risk level changed: High → Critical", ip: "192.168.1.100", severity: "high" },
-  { id: 6, timestamp: "2026-02-27 13:45:10", user: "Mohammed Ismail", role: "SUPERVISOR", action: "Report Generated", category: "report", detail: "Daily DGMS Compliance Report for Feb 27, 2026", ip: "192.168.1.112", severity: "info" },
-  { id: 7, timestamp: "2026-02-27 13:30:55", user: "System", role: "SYSTEM", action: "Camera Reconnected", category: "camera", detail: "CAM-10 Underground Shaft B back online after 45 min downtime", ip: "—", severity: "medium" },
-  { id: 8, timestamp: "2026-02-27 13:22:18", user: "Aarav Patel", role: "ADMIN", action: "User Created", category: "user", detail: "Registered new worker Lakshmi Devi (EMP-102) — Processing Plant", ip: "192.168.1.100", severity: "info" },
-  { id: 9, timestamp: "2026-02-27 13:15:42", user: "System", role: "SYSTEM", action: "Violation Detected", category: "violation", detail: "V-1088 — Goggles missing, Vikram Singh at Excavation Area A (92% conf)", ip: "—", severity: "high" },
-  { id: 10, timestamp: "2026-02-27 13:05:30", user: "Neha Sharma", role: "SUPERVISOR", action: "Emergency SOS", category: "alert", detail: "SOS triggered for Welding Zone B — Lockout protocol initiated", ip: "192.168.1.105", severity: "critical" },
-  { id: 11, timestamp: "2026-02-27 12:48:15", user: "System", role: "SYSTEM", action: "Shift Handover", category: "system", detail: "Morning → Afternoon shift handover completed — 3 pending violations", ip: "—", severity: "info" },
-  { id: 12, timestamp: "2026-02-27 12:30:08", user: "Aarav Patel", role: "ADMIN", action: "Settings Changed", category: "settings", detail: "AI confidence threshold updated: 85% → 88%", ip: "192.168.1.100", severity: "medium" },
-  { id: 13, timestamp: "2026-02-27 12:15:42", user: "System", role: "SYSTEM", action: "Camera Offline", category: "camera", detail: "CAM-10 Underground Shaft B connection lost — retrying...", ip: "—", severity: "high" },
-  { id: 14, timestamp: "2026-02-27 11:58:30", user: "Anand Verma", role: "SUPERVISOR", action: "Worker Notified", category: "alert", detail: "Sent WhatsApp warning to Suresh Reddy (EMP-045) — 3rd violation today", ip: "192.168.1.118", severity: "medium" },
-  { id: 15, timestamp: "2026-02-27 11:42:15", user: "System", role: "SYSTEM", action: "Backup Completed", category: "system", detail: "Database backup successful — TimescaleDB snapshot (2.4 GB)", ip: "—", severity: "info" },
-  { id: 16, timestamp: "2026-02-27 11:30:00", user: "Aarav Patel", role: "ADMIN", action: "User Role Changed", category: "user", detail: "Mohammed Ismail promoted: WORKER → SUPERVISOR", ip: "192.168.1.100", severity: "medium" },
-  { id: 17, timestamp: "2026-02-27 11:15:22", user: "System", role: "SYSTEM", action: "Report Auto-Generated", category: "report", detail: "ESG Safety Metrics Report (Monthly) — 95.2% compliance", ip: "—", severity: "info" },
-  { id: 18, timestamp: "2026-02-27 10:58:45", user: "System", role: "SYSTEM", action: "Face Registered", category: "kiosk", detail: "Deepak Yadav (EMP-091) face embedding updated at Kiosk-01", ip: "—", severity: "info" },
-  { id: 19, timestamp: "2026-02-27 10:45:30", user: "Neha Sharma", role: "SUPERVISOR", action: "Zone PPE Updated", category: "zone", detail: "Welding Zone B — added 'Gloves' to required PPE list", ip: "192.168.1.105", severity: "medium" },
-  { id: 20, timestamp: "2026-02-27 10:30:15", user: "System", role: "SYSTEM", action: "PA Announcement", category: "alert", detail: "Safety warning broadcast to Assembly Line A — Helmet compliance low", ip: "—", severity: "medium" },
-];
-
-type LogType = typeof DEMO_LOGS[0];
+type LogType = AuditLogEvent;
 
 export default function AuditLog() {
+  const [logs, setLogs] = useState<LogType[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [severityFilter, setSeverityFilter] = useState("ALL");
@@ -39,15 +18,30 @@ export default function AuditLog() {
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(""), 3000); };
 
-  const filtered = DEMO_LOGS.filter(log => {
+  const fetchLogs = async () => {
+    setLoading(true);
+    try {
+      const params: Record<string, unknown> = { limit: 50 };
+      if (categoryFilter !== "ALL") params.category = categoryFilter;
+      if (severityFilter !== "ALL") params.severity = severityFilter;
+      const res = await adminAPI.auditLog(params as any);
+      setLogs(res.data.events || []);
+    } catch {
+      // keep current
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchLogs(); }, [categoryFilter, severityFilter]);
+
+  const filtered = logs.filter(log => {
     const matchSearch = log.action.toLowerCase().includes(search.toLowerCase()) || log.detail.toLowerCase().includes(search.toLowerCase()) || log.user.toLowerCase().includes(search.toLowerCase());
-    const matchCategory = categoryFilter === "ALL" || log.category === categoryFilter;
-    const matchSeverity = severityFilter === "ALL" || log.severity === severityFilter;
-    return matchSearch && matchCategory && matchSeverity;
+    return matchSearch;
   });
 
   const handleExport = () => {
-    const csv = ["Timestamp,User,Role,Action,Category,Detail,IP,Severity", ...DEMO_LOGS.map(l => `${l.timestamp},${l.user},${l.role},"${l.action}",${l.category},"${l.detail}",${l.ip},${l.severity}`)].join("\n");
+    const csv = ["Timestamp,User,Role,Action,Category,Detail,IP,Severity", ...logs.map(l => `${l.timestamp},${l.user},${l.role},"${l.action}",${l.category},"${l.detail}",${l.ip},${l.severity}`)].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "audit_log_export.csv"; a.click();
@@ -86,11 +80,11 @@ export default function AuditLog() {
   };
 
   const counts = {
-    total: DEMO_LOGS.length,
-    critical: DEMO_LOGS.filter(l => l.severity === "critical").length,
-    high: DEMO_LOGS.filter(l => l.severity === "high").length,
-    system: DEMO_LOGS.filter(l => l.role === "SYSTEM").length,
-    human: DEMO_LOGS.filter(l => l.role !== "SYSTEM").length,
+    total: logs.length,
+    critical: logs.filter(l => l.severity === "critical").length,
+    high: logs.filter(l => l.severity === "high").length,
+    system: logs.filter(l => l.role === "SYSTEM").length,
+    human: logs.filter(l => l.role !== "SYSTEM").length,
   };
 
   return (
@@ -109,7 +103,8 @@ export default function AuditLog() {
           <p className="text-sm text-slate-500 mt-1">Complete system activity trail — all events are immutable</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => showToast("Refreshing audit log...")} className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all shadow-sm">
+          {loading && <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />}
+          <button onClick={() => { fetchLogs(); showToast("Audit log refreshed"); }} className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all shadow-sm">
             <RefreshCw className="w-3.5 h-3.5" />Refresh
           </button>
           <button onClick={handleExport} className="flex items-center gap-1.5 px-4 py-2.5 bg-[#18181b] text-white rounded-xl text-xs font-bold hover:bg-black transition-all shadow-md">

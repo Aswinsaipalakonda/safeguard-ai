@@ -27,7 +27,9 @@ import Gamification from "./pages/Gamification";
 
 // Kiosk
 import FaceScanScreen from "./kiosk/FaceScanScreen";
+import FaceEnrollScreen from "./kiosk/FaceEnrollScreen";
 import PPECheckScreen from "./kiosk/PPECheckScreen.tsx";
+import PPESuccessScreen from "./kiosk/PPESuccessScreen.tsx";
 import WorkerLogin from "./pages/WorkerLogin";
 
 function App() {
@@ -71,7 +73,9 @@ function App() {
         {/* Worker Kiosk Routes */}
         <Route element={<ProtectedRoute allowedRoles={['WORKER']} />}>
           <Route path="/kiosk" element={<FaceScanScreen />} />
+          <Route path="/kiosk/enroll" element={<FaceEnrollScreen />} />
           <Route path="/kiosk/ppe" element={<PPECheckScreen />} />
+          <Route path="/kiosk/success" element={<PPESuccessScreen />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -18,7 +18,9 @@ import redis
 import environ
 from pathlib import Path
 
-from .models import User, Site, Zone, Worker, Violation, Alert, ComplianceReport
+from .models import (
+    User, Site, Zone, Worker, Violation, Alert, ComplianceReport, Attendance
+)
 from .serializers import (
     CustomTokenObtainPairSerializer,
     UserSerializer,
@@ -244,6 +246,19 @@ class ViolationViewSet(viewsets.ModelViewSet):
         return qs
 
 
+from .serializers import AttendanceSerializer
+
+class AttendanceViewSet(viewsets.ModelViewSet):
+    queryset = Attendance.objects.all().order_by('-check_in_time')
+    serializer_class = AttendanceSerializer
+    
+    def get_queryset(self):
+        qs = super().get_queryset()
+        worker_id = self.request.query_params.get('worker_id')
+        if worker_id:
+            qs = qs.filter(worker_id=worker_id)
+        return qs
+
 class AlertViewSet(viewsets.ModelViewSet):
     queryset = Alert.objects.all().order_by('-sent_at')
     serializer_class = AlertSerializer
@@ -335,42 +350,168 @@ def analytics_compliance(request):
 # ---------------------------------------------------------------------------
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def kiosk_auth(request):
+    """
+    Authenticate a worker by employee_code + passcode (PIN).
+    Creates a linked Django User on-the-fly if it doesn't exist,
+    then issues a real JWT with role=WORKER.
+    Default demo passcode for all workers: 1234
+    """
+    employee_code = request.data.get('employee_code', '').strip()
+    passcode = request.data.get('passcode', '').strip()
+
+    if not employee_code or not passcode:
+        return Response({'error': 'Employee code and passcode are required.'}, status=400)
+
+    # Demo passcode for all workers
+    if passcode != '1234':
+        return Response({'error': 'Invalid passcode.'}, status=401)
+
+    worker = Worker.objects.filter(employee_code=employee_code, is_active=True).first()
+    if not worker:
+        return Response({'error': f'No active worker found with code {employee_code}.'}, status=404)
+
+    # Get or create a linked Django auth user for this worker
+    username = f'worker_{employee_code.lower()}'
+    user, created = User.objects.get_or_create(
+        username=username,
+        defaults={
+            'email': f'{username}@safeguard.local',
+            'first_name': worker.name.split()[0] if worker.name else '',
+            'last_name': ' '.join(worker.name.split()[1:]) if worker.name else '',
+            'role': 'WORKER',
+        }
+    )
+    if created:
+        user.set_password(passcode)
+        user.save()
+
+    # Issue real JWT
+    from rest_framework_simplejwt.tokens import RefreshToken
+    refresh = RefreshToken.for_user(user)
+    refresh['role'] = 'WORKER'
+    refresh['email'] = user.email
+
+    return Response({
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+        'role': 'WORKER',
+        'employee_code': worker.employee_code,
+        'name': worker.name,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def kiosk_enroll_face(request):
+    """
+    Enroll a worker's face: extract embedding from photo and store in DB.
+    Expects: { employee_code: "EMP-001", image: "<base64>" }
+    """
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from ai_engine.face_service import extract_face_embedding
+
+    employee_code = request.data.get('employee_code', '').strip()
+    image_b64 = request.data.get('image', '')
+
+    if not employee_code or not image_b64:
+        return Response({'error': 'employee_code and image are required.'}, status=400)
+
+    worker = Worker.objects.filter(employee_code=employee_code, is_active=True).first()
+    if not worker:
+        return Response({'error': f'No active worker with code {employee_code}.'}, status=404)
+
+    embedding = extract_face_embedding(image_b64)
+    if embedding is None:
+        return Response({'error': 'No face detected in the image. Please try again with a clear photo.'}, status=400)
+
+    worker.face_embedding = embedding
+    worker.save(update_fields=['face_embedding'])
+
+    return Response({
+        'status': 'enrolled',
+        'employee_code': worker.employee_code,
+        'name': worker.name,
+        'embedding_dim': len(embedding),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def kiosk_scan_face(request):
     """
-    Simulates biometric attendance.
-    Verifies if face matching exists, assigns attendance.
+    Real face verification via OpenCV SFace embeddings.
+    1) If image provided → extract embedding → compare against all enrolled workers
+    2) Fallback for authenticated user (JWT) without image → use identity from token
+    Only the matched worker is accepted — one face = one ID.
     """
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from ai_engine.face_service import extract_face_embedding, find_best_match
     from .models import Attendance
-    
-    # Ideally, we receive a face image, process with OpenCV/face_recognition, and match against `Worker.face_embedding`
-    # For demo reliability, we randomly match a valid active worker with an embedding, simulating a positive match.
-    # If the user sends a specific employee ID fallback, match that instead.
-    
-    employee_code = request.data.get('employee_code')
-    
-    worker = None
-    if employee_code:
-        worker = Worker.objects.filter(employee_code=employee_code, is_active=True).first()
-    else:
-        # Simulate face matching by randomly picking an enrolled worker
-        workers = Worker.objects.filter(is_active=True, face_embedding__isnull=False)
-        if workers.exists():
-            worker = random.choice(list(workers))
 
-    if worker:
+    image_b64 = request.data.get('image', '')
+
+    # ── Real face matching path ──
+    if image_b64:
+        probe_embedding = extract_face_embedding(image_b64)
+        if probe_embedding is None:
+            return Response({'error': 'No face detected. Please look directly at the camera.'}, status=400)
+
+        # Load all enrolled workers with face embeddings
+        enrolled_workers = Worker.objects.filter(is_active=True, face_embedding__isnull=False).exclude(face_embedding=[])
+        enrolled = [(w.id, w.name, w.face_embedding) for w in enrolled_workers]
+
+        if not enrolled:
+            return Response({'error': 'No enrolled faces in the system. Please enroll workers first.'}, status=404)
+
+        match = find_best_match(probe_embedding, enrolled)
+        if match is None:
+            return Response({
+                'error': 'IDENTIFICATION MISMATCH: Face does not match any enrolled worker.'
+            }, status=403)
+
+        worker_id, name, score = match
+        worker = Worker.objects.get(id=worker_id)
+
         # Log attendance
         Attendance.objects.create(worker=worker, zone='Entry Checkpoint', status='Present')
-        
+
         return Response({
-            "worker_id": f"W-{worker.id}",
-            "name": worker.name,
-            "employee_code": worker.employee_code,
-            "stars": min(5, max(1, int(worker.compliance_rate / 20))),
-            "compliance": round(worker.compliance_rate, 1),
+            'worker_id': f'W-{worker.id}',
+            'name': worker.name,
+            'employee_code': worker.employee_code,
+            'stars': min(5, max(1, int(worker.compliance_rate / 20))),
+            'compliance': round(worker.compliance_rate, 1),
+            'similarity': round(score * 100, 1),
         })
 
-    # Strict failure if no matching worker is found
-    return Response({"error": "No matching face found in database"}, status=404)
+    # ── Fallback: authenticated user without image (JWT identity) ──
+    worker = None
+    if request.user and request.user.is_authenticated:
+        username = request.user.username
+        if username.startswith('worker_'):
+            code = username.replace('worker_', '').upper()
+            worker = Worker.objects.filter(employee_code=code, is_active=True).first()
+
+    if not worker:
+        employee_code = request.data.get('employee_code')
+        if employee_code:
+            worker = Worker.objects.filter(employee_code=employee_code, is_active=True).first()
+
+    if worker:
+        Attendance.objects.create(worker=worker, zone='Entry Checkpoint', status='Present')
+        return Response({
+            'worker_id': f'W-{worker.id}',
+            'name': worker.name,
+            'employee_code': worker.employee_code,
+            'stars': min(5, max(1, int(worker.compliance_rate / 20))),
+            'compliance': round(worker.compliance_rate, 1),
+            'similarity': 100.0,
+        })
+
+    return Response({'error': 'No face image provided and no authenticated worker found.'}, status=400)
 
 
 @api_view(['POST'])
@@ -378,14 +519,100 @@ def kiosk_scan_face(request):
 def kiosk_verify_ppe(request):
     """
     Simulates a PPE verification check from a camera frame.
-    Returns randomised results for demo realism.
+    Returns modelled results via YOLOv8 object detection.
     """
-    all_ppe = ["helmet", "vest", "boots", "goggles", "gloves"]
-    # 60% chance fully compliant, 40% chance missing something
-    if random.random() < 0.6:
-        return Response({"approved": True, "missing": []})
-    missing = random.sample(all_ppe, k=random.randint(1, 2))
-    return Response({"approved": False, "missing": missing})
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from ai_engine.detector import verify_single_image_ppe
+    
+    image_b64 = request.data.get('image', '')
+    if not image_b64:
+        return Response({'approved': False, 'missing': ['Image required']})
+        
+    try:
+        result = verify_single_image_ppe(image_b64)
+        return Response(result)
+    except Exception as e:
+        return Response({'approved': False, 'missing': ['System Error: ' + str(e)]})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def kiosk_checkin(request):
+    """
+    Called after a successful PPE scan on the kiosk.
+    Creates an Attendance record and optionally logs Violations for missing PPE.
+    Expects: employee_code, approved (bool), missing (list of str), detections (list)
+    """
+    employee_code = request.data.get('employee_code', '')
+    approved_flag = request.data.get('approved', False)
+    missing_items = request.data.get('missing', [])
+    detection_list = request.data.get('detections', [])
+
+    if not employee_code:
+        return Response({'error': 'employee_code is required'}, status=400)
+
+    try:
+        worker = Worker.objects.get(employee_code=employee_code, is_active=True)
+    except Worker.DoesNotExist:
+        return Response({'error': f'Worker {employee_code} not found'}, status=404)
+
+    # Create attendance record
+    zone_name = request.data.get('zone', 'Entry Checkpoint')
+    attendance_status = 'Present' if approved_flag else 'PPE Non-Compliant'
+    att = Attendance.objects.create(
+        worker=worker,
+        zone=zone_name,
+        status=attendance_status,
+    )
+
+    # Log violations for any required missing PPE items
+    violations_created = []
+    ppe_type_map = {
+        'helmet': 'helmet', 'goggles': 'goggles', 'gloves': 'gloves',
+        'boots': 'boots', 'mask': 'helmet',  # no mask choice in model -- use closest
+    }
+    for item in missing_items:
+        vt = ppe_type_map.get(item, 'helmet')
+        # Find max confidence for the violation detection
+        conf = 0.0
+        for det in detection_list:
+            if det.get('is_violation') and det.get('class', '').startswith('no_'):
+                conf = max(conf, det.get('confidence', 0.0))
+        v = Violation.objects.create(
+            worker=worker,
+            ppe_type=vt,
+            zone=zone_name,
+            camera_id='kiosk-entry',
+            confidence=conf or 0.85,
+            image_path='',
+        )
+        violations_created.append({'id': v.id, 'ppe_type': vt})
+
+        # Create an alert for each violation
+        Alert.objects.create(
+            violation=v,
+            level=2,
+            channel='dashboard',
+        )
+
+    # Update worker compliance rate
+    total_violations = worker.violations.count()
+    total_scans = worker.attendances.count()
+    if total_scans > 0:
+        worker.compliance_rate = round((1 - (total_violations / max(total_scans, 1))) * 100, 1)
+        worker.compliance_rate = max(0, worker.compliance_rate)
+        worker.save(update_fields=['compliance_rate'])
+
+    return Response({
+        'status': 'checked_in',
+        'attendance_id': att.id,
+        'worker': worker.name,
+        'employee_code': worker.employee_code,
+        'approved': approved_flag,
+        'violations': violations_created,
+        'compliance_rate': worker.compliance_rate,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -1153,7 +1380,7 @@ def admin_dashboard(request):
 
     # Worker counts
     total_workers = Worker.objects.count()
-    active_workers = Worker.objects.filter(is_active=True).count()
+    active_workers = Attendance.objects.filter(check_in_time__gte=today).values('worker').distinct().count()
 
     # Camera stats
     cams = camera_manager.list_cameras()

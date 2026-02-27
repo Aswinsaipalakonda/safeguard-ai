@@ -1,359 +1,627 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Volume2, Scan, CheckCircle2, AlertTriangle, LogOut } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { kioskAPI, type PPEDetection } from "../lib/api";
 import useStore from "../store";
-import { kioskAPI } from "../lib/api";
-import { motion } from "framer-motion";
 
-const translations = {
-  en: {
-    scanning: "ANALYZING SAFETY GEAR",
-    accessGranted: "ATTENDANCE MARKED SUCCESSFULLY",
-    accessDenied: "GEAR CHECK FAILED",
-    voiceScanning: "Please stand still while we verify your safety equipment.",
-    voiceGranted: "Safety gear verified. Attendance marked successfully. You may proceed.",
-    voiceDenied: "Safety violation detected. Please wear the required equipment.",
-    retryText: "FIX GEAR & RETRY",
-    nextText: "PROCEED TO WORK",
-    logoutText: "COMPLETE & LOG OUT",
-  },
-  hi: {
-    scanning: "सुरक्षा गियर का विश्लेषण",
-    accessGranted: "उपस्थिति सफलतापूर्वक दर्ज की गई",
-    accessDenied: "उपकरण चेक विफल",
-    voiceScanning: "कृपया शांत खड़े रहें, हम आपके उपकरणों की जाँच कर रहे हैं।",
-    voiceGranted: "उपकरण सत्यापित। उपस्थिति दर्ज की गई। आप प्रवेश कर सकते हैं।",
-    voiceDenied: "सुरक्षा उपकरण की कमी पाई गई। कृपया उपकरण पहनें।",
-    retryText: "उपकरण ठीक करें",
-    nextText: "काम शुरू करें",
-    logoutText: "लॉग आउट करें",
-  }
+/* ── Inline keyframes ─────────────────────────────────────────────── */
+const kf = `
+@keyframes ppe-scanline{0%{top:-8%}100%{top:108%}}
+@keyframes ppe-pulse{0%,100%{opacity:.45}50%{opacity:1}}
+@keyframes ppe-slide-up{0%{opacity:0;transform:translateY(10px)}100%{opacity:1;transform:translateY(0)}}
+@keyframes ppe-glow{0%,100%{box-shadow:0 0 8px var(--glow)}50%{box-shadow:0 0 22px var(--glow)}}
+@keyframes popup-scale{0%{transform:scale(0.7);opacity:0}60%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
+@keyframes popup-check{0%{stroke-dashoffset:100}100%{stroke-dashoffset:0}}
+@keyframes popup-ring{0%,100%{box-shadow:0 0 0 0 rgba(76,255,114,.45)}50%{box-shadow:0 0 0 28px rgba(76,255,114,0)}}
+@keyframes popup-progress{0%{width:100%}100%{width:0%}}
+@keyframes popup-fade{0%{opacity:0;transform:translateY(16px)}100%{opacity:1;transform:translateY(0)}}
+`;
+
+/* ── PPE item display config ──────────────────────────────────────── */
+const PPE_META: Record<string, { icon: string; label: string }> = {
+  helmet:     { icon: "⛑️", label: "Hard Hat" },
+  no_helmet:  { icon: "⛑️", label: "No Hard Hat" },
+  goggles:    { icon: "🥽", label: "Safety Goggles" },
+  no_goggles: { icon: "🥽", label: "No Goggles" },
+  glove:      { icon: "🧤", label: "Gloves" },
+  no_glove:   { icon: "🧤", label: "No Gloves" },
+  mask:       { icon: "😷", label: "Face Mask" },
+  no_mask:    { icon: "😷", label: "No Mask" },
+  shoes:      { icon: "👢", label: "Safety Boots" },
+  no_shoes:   { icon: "👢", label: "No Boots" },
 };
 
-const DEMO_BOXES = [
-  { id: 1, label: "WORKER", cls: "person", rx: 0.15, ry: 0.1, rw: 0.7, rh: 0.8, color: "#4f46e5" }, 
-  { id: 2, label: "HELMET", cls: "helmet", rx: 0.35, ry: 0.1, rw: 0.3, rh: 0.2, color: "#10b981" },
-  { id: 3, label: "VEST", cls: "vest", rx: 0.25, ry: 0.35, rw: 0.5, rh: 0.35, color: "#10b981" },
-  { id: 4, label: "GOGGLES", cls: "goggles", rx: 0.40, ry: 0.22, rw: 0.2, rh: 0.08, color: "#ef4444" },
-];
+/* ── Read admin PPE settings (from Settings page localStorage) ── */
+const getOptionalViolationClasses = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem("safeguard_settings");
+    if (!raw) return new Set();
+    const s = JSON.parse(raw);
+    const opt = new Set<string>();
+    if (s.reqHelmet === false) opt.add("no_helmet");
+    if (s.reqEyes === false) opt.add("no_goggles");
+    if (s.reqGloves === false) opt.add("no_glove");
+    if (s.reqMask === false) opt.add("no_mask");
+    if (s.reqBoots === false) opt.add("no_shoes");
+    return opt;
+  } catch { return new Set(); }
+};
 
 export default function PPECheckScreen() {
-  const [phase, setPhase] = useState<"scanning" | "result" | "success">("scanning");
-  const [approved, setApproved] = useState<boolean | null>(null);
-  const [missingItems, setMissingItems] = useState<string[]>([]);
   const navigate = useNavigate();
-  const language = useStore((state) => state.language);
-  const setLanguage = useStore((state) => state.setLanguage);
-  const logout = useStore((state) => state.logout);
-  const text = translations[language];
+  const location = useLocation();
+  const workerName = (location.state as any)?.workerName || "Worker";
+  const workerCode = (location.state as any)?.workerCode || "EMP-0000";
+  const initials = workerName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
 
-  const handleLogout = () => {
-    logout();
-    navigate("/worker-login");
-  };
+  const [time, setTime] = useState(new Date());
+  const [scanning, setScanning] = useState(false);
+  const [detections, setDetections] = useState<PPEDetection[]>([]);
+  const [approved, setApproved] = useState<boolean | null>(null);
+  const [missing, setMissing] = useState<string[]>([]);
+  const [scanCount, setScanCount] = useState(0);
+  const [error, setError] = useState("");
+  const [optionalClasses, setOptionalClasses] = useState<Set<string>>(new Set());
+  const [countdown, setCountdown] = useState(5);
+  const logout = useStore((s) => s.logout);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animFrame = useRef(0);
-  const scanStart = useRef(Date.now());
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+  const busyRef = useRef(false);
 
-  const speak = useCallback((message: string) => {
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(message);
-      u.lang = language === "hi" ? "hi-IN" : "en-US";
-      u.rate = 0.9; u.pitch = 1;
-      window.speechSynthesis.speak(u);
-    } catch (e) { console.warn("TTS", e); }
-  }, [language]);
+  /* ── Clock ──────────────────────────────────────────────────────── */
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
-  /* Start Camera */
+  /* ── Camera ─────────────────────────────────────────────────────── */
   useEffect(() => {
     let active = true;
-    const initCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-        if (!active) {
-            stream.getTracks().forEach(t => t.stop());
-            return;
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment", width: 1280, height: 720 } })
+      .then((s) => {
+        if (active && videoRef.current) {
+          videoRef.current.srcObject = s;
         }
-        streamRef.current = stream;
-        if (videoRef.current) { videoRef.current.srcObject = stream; }
-      } catch { console.warn("Camera unavailable"); }
-    };
-    initCamera();
-    
-    return () => { 
-        active = false;
-        streamRef.current?.getTracks().forEach(t => t.stop()); 
+      })
+      .catch(() => setError("Camera access denied. Please allow camera permissions."));
+    return () => {
+      active = false;
+      const s = videoRef.current?.srcObject as MediaStream;
+      s?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
-  /* Draw Box Overlay */
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+  /* ── Capture a frame ────────────────────────────────────────────── */
+  const captureFrame = useCallback((): string | null => {
+    const v = videoRef.current, c = canvasRef.current;
+    if (!v || !c || !v.videoWidth) return null;
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    const ctx = c.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.8);
+  }, []);
+
+  /* ── Draw bounding boxes on overlay canvas ──────────────────────── */
+  const drawDetections = useCallback((dets: PPEDetection[], optClasses?: Set<string>) => {
+    const ov = overlayRef.current;
+    const v = videoRef.current;
+    if (!ov || !v) return;
+
+    const dw = ov.clientWidth;
+    const dh = ov.clientHeight;
+    ov.width = dw;
+    ov.height = dh;
+
+    const ctx = ov.getContext("2d");
     if (!ctx) return;
+    ctx.clearRect(0, 0, dw, dh);
 
-    const draw = () => {
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
+    for (const det of dets) {
+      const [nx1, ny1, nx2, ny2] = det.bbox;
+      const x1 = nx1 * dw;
+      const y1 = ny1 * dh;
+      const x2 = nx2 * dw;
+      const y2 = ny2 * dh;
+      const bw = x2 - x1;
+      const bh = y2 - y1;
 
-      if (!videoRef.current || videoRef.current.readyState < 2) {
-        ctx.fillStyle = "#0A0D14";
-        ctx.fillRect(0, 0, w, h);
-      }
+      const isOptional = det.is_violation && (optClasses?.has(det.class) ?? false);
+      const color = det.is_violation ? (isOptional ? "#ffb042" : "#ff3344") : "#4cff72";
+      const bgAlpha = det.is_violation ? (isOptional ? "rgba(255,176,66,0.12)" : "rgba(255,51,68,0.12)") : "rgba(76,255,114,0.08)";
 
-      const t = (Date.now() - scanStart.current) / 1000;
+      // ── Filled background
+      ctx.fillStyle = bgAlpha;
+      ctx.fillRect(x1, y1, bw, bh);
 
-      if (phase === "scanning" || phase === "result") {
-        DEMO_BOXES.forEach((det) => {
-          const drift = Math.sin(t * 2 + det.id) * 4;
-          const bx = det.rx * w + drift;
-          const by = det.ry * h + Math.cos(t * 1.5 + det.id) * 3;
-          const bw = det.rw * w;
-          const bh = det.rh * h;
+      // ── Main border
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(x1, y1, bw, bh);
 
-          ctx.lineWidth = 2.5;
-          ctx.strokeStyle = det.color;
-          ctx.setLineDash(det.cls === "person" ? [8, 4] : []);
-          
-          if (phase === "result" && !approved && det.color === "#ef4444") {
-             ctx.shadowColor = "#ef4444";
-             ctx.shadowBlur = 20 + Math.sin(t * 10) * 10;
-          } else {
-             ctx.shadowColor = det.color;
-             ctx.shadowBlur = 10;
-          }
+      // ── Corner brackets (thicker, longer corners)
+      const cl = Math.min(18, bw * 0.25, bh * 0.25);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = color;
+      // top-left
+      ctx.beginPath(); ctx.moveTo(x1, y1 + cl); ctx.lineTo(x1, y1); ctx.lineTo(x1 + cl, y1); ctx.stroke();
+      // top-right
+      ctx.beginPath(); ctx.moveTo(x2 - cl, y1); ctx.lineTo(x2, y1); ctx.lineTo(x2, y1 + cl); ctx.stroke();
+      // bottom-left
+      ctx.beginPath(); ctx.moveTo(x1, y2 - cl); ctx.lineTo(x1, y2); ctx.lineTo(x1 + cl, y2); ctx.stroke();
+      // bottom-right
+      ctx.beginPath(); ctx.moveTo(x2 - cl, y2); ctx.lineTo(x2, y2); ctx.lineTo(x2, y2 - cl); ctx.stroke();
 
-          ctx.strokeRect(bx, by, bw, bh);
-          ctx.setLineDash([]);
-          ctx.shadowBlur = 0;
+      // ── Label pill
+      const meta = PPE_META[det.class] || { icon: "🔍", label: det.class };
+      const label = `${meta.icon} ${meta.label}  ${Math.round(det.confidence * 100)}%`;
+      ctx.font = "bold 12px Inter, system-ui, sans-serif";
+      const tm = ctx.measureText(label);
+      const lw = tm.width + 14;
+      const lh = 22;
+      const lx = Math.max(0, Math.min(x1, dw - lw));
+      const ly = Math.max(lh, y1) - lh - 4;
 
-          ctx.fillStyle = det.color;
-          ctx.font = `bold 12px monospace`;
-          ctx.fillRect(bx, by - 20, ctx.measureText(det.label).width + 12, 20);
-          
-          ctx.fillStyle = "#ffffff";
-          ctx.fillText(det.label, bx + 6, by - 5);
-        });
-      }
+      // pill background
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(lx, ly, lw, lh, 4);
+      ctx.fill();
 
-      // Scanning Laser
-      if (phase === "scanning") {
-          const scanY = (t * 80) % h;
-          ctx.fillStyle = "rgba(79, 70, 229, 0.15)";
-          ctx.fillRect(0, 0, w, scanY);
-          ctx.fillStyle = "rgba(79, 70, 229, 0.8)";
-          ctx.shadowColor = "#818cf8";
-          ctx.shadowBlur = 20;
-          ctx.fillRect(0, scanY, w, 2);
-          ctx.shadowBlur = 0;
-      }
+      // pill text
+      ctx.fillStyle = (det.is_violation && !isOptional) ? "#fff" : "#030803";
+      ctx.fillText(label, lx + 7, ly + 15);
 
-      animFrame.current = requestAnimationFrame(draw);
-    };
+      // ── Confidence bar under label
+      const barW = lw;
+      const barH = 3;
+      const barY = ly + lh + 2;
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.fillRect(lx, barY, barW, barH);
+      ctx.fillStyle = color;
+      ctx.fillRect(lx, barY, barW * det.confidence, barH);
+    }
+  }, []);
 
-    animFrame.current = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animFrame.current);
-  }, [phase, approved]);
+  /* ── Single scan cycle ──────────────────────────────────────────── */
+  const runScan = useCallback(async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setScanning(true);
+    setError("");
 
-  /* Scanning Logic */
+    try {
+      const frame = captureFrame();
+      if (!frame) throw new Error("Camera not ready");
+
+      const res = await kioskAPI.verifyPPE(frame);
+      const dets = res.data.detections || [];
+      setDetections(dets);
+
+      // Read which PPE violations are optional per admin settings
+      const optClasses = getOptionalViolationClasses();
+      setOptionalClasses(optClasses);
+
+      const hasPositive = dets.some((d: PPEDetection) => !d.is_violation);
+      const hasRequiredViolation = dets.some(
+        (d: PPEDetection) => d.is_violation && !optClasses.has(d.class)
+      );
+      // Check if admin has set ALL PPE items as optional (nothing is required)
+      const ALL_VIOLATION_CLASSES = ["no_helmet", "no_goggles", "no_glove", "no_mask", "no_shoes"];
+      const allPPEOptional = ALL_VIOLATION_CLASSES.every((c) => optClasses.has(c));
+
+      // Approve when:
+      //  - all PPE items are optional (nothing required → always pass), OR
+      //  - at least one positive PPE detected and no required violations, OR
+      //  - all detected violations are optional (admin waived those items)
+      const allViolationsOptional = dets.length > 0 && dets.every(
+        (d: PPEDetection) => !d.is_violation || optClasses.has(d.class)
+      );
+      setApproved(
+        allPPEOptional
+          ? true
+          : dets.length === 0
+            ? null
+            : (hasPositive && !hasRequiredViolation) || allViolationsOptional
+      );
+
+      // Only show required missing items
+      const missingToClass: Record<string, string> = {
+        helmet: "no_helmet", goggles: "no_goggles", gloves: "no_glove",
+        mask: "no_mask", boots: "no_shoes",
+      };
+      const allMissing: string[] = res.data.missing || [];
+      setMissing(allMissing.filter((m) => !optClasses.has(missingToClass[m] || "")));
+      setScanCount((c) => c + 1);
+      drawDetections(dets, optClasses);
+    } catch (err: any) {
+      const msg = err?.response?.data?.missing?.[0] || err?.message || "Detection failed";
+      setError(msg);
+    } finally {
+      busyRef.current = false;
+      setScanning(false);
+    }
+  }, [captureFrame, drawDetections]);
+
+  /* ── Record check-in to DB when approved ─────────────────────────── */
+  const checkinDone = useRef(false);
   useEffect(() => {
-    speak(text.voiceScanning);
-    const timer = setTimeout(async () => {
-      let pass = true;
-      let missing: string[] = [];
-      try {
-        const res = await kioskAPI.verifyPPE("placeholder_image");
-        pass = res.data.approved;
-        missing = res.data.missing;
-      } catch {
-        // Fallback demo: Mostly pass
-        pass = Math.random() > 0.3;
-        missing = pass ? [] : ["goggles"];
-      }
+    if (approved !== true || checkinDone.current) return;
+    checkinDone.current = true;
+    kioskAPI.checkin({
+      employee_code: workerCode,
+      approved: true,
+      missing,
+      detections,
+    }).catch(() => {/* best-effort — don't block logout */});
+  }, [approved, workerCode, missing, detections]);
 
-      setApproved(pass);
-      setMissingItems(missing);
-      setPhase("result");
-      speak(pass ? text.voiceGranted : text.voiceDenied);
+  /* ── Auto-logout countdown on full compliance ────────────────────── */
+  useEffect(() => {
+    if (approved !== true) { setCountdown(5); return; }
+    const interval = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(interval);
+          // Stop camera
+          const s = videoRef.current?.srcObject as MediaStream;
+          s?.getTracks().forEach((t) => t.stop());
+          // Logout
+          logout();
+          localStorage.removeItem("safeguard_worker");
+          navigate("/worker-login", { replace: true });
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [approved, logout, navigate]);
 
-      if (pass) {
-        setTimeout(() => setPhase("success"), 2500);
-      }
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [speak, text]);
+  /* ── Derived ────────────────────────────────────────────────────── */
+  const fDate = time.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/,/g, "");
+  const fTime = time.toLocaleTimeString("en-GB", { hour12: false });
 
-  // Removed auto-navigation useEffect here so the user can see the success state
+  const compliantDets = detections.filter((d) => !d.is_violation);
+  const requiredViolationDets = detections.filter((d) => d.is_violation && !optionalClasses.has(d.class));
+  const optionalViolationDets = detections.filter((d) => d.is_violation && optionalClasses.has(d.class));
 
+  const noDetections = scanCount > 0 && detections.length === 0;
+  const statusColor = approved === null ? (noDetections ? "#ffb042" : "#4cff72") : approved ? "#4cff72" : "#ff3344";
+  const statusLabel = approved === null ? (noDetections ? "NO PPE DETECTED" : "READY TO SCAN") : approved ? "COMPLIANT" : "VIOLATION DETECTED";
 
   return (
-    <div className="min-h-screen w-full bg-[#05050A] flex flex-col relative overflow-hidden font-sans text-white">
-      
-      {/* Top Navigation */}
-      <div className="w-full p-6 flex justify-between items-start z-50">
-        <div className="flex bg-[#121520] rounded-xl border border-white/5 p-1">
-          <button 
-            onClick={() => { setLanguage('en'); }} 
-            className={`px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${language === 'en' ? 'bg-[#4F46E5] text-white' : 'text-slate-400 hover:text-white'}`}
-          >
-             ENGLISH
-          </button>
-          <button 
-            onClick={() => { setLanguage('hi'); }} 
-            className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${language === 'hi' ? 'bg-[#4F46E5] text-white' : 'text-slate-400 hover:text-white'}`}
-          >
-             हिंदी
-          </button>
-        </div>
-        
-        <div className="flex gap-4">
-           <div className={`px-5 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-wider border text-slate-300 transition-colors ${phase === 'scanning' ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400' : approved === false ? 'bg-red-500/10 border-red-500/30 text-red-400' : approved ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-[#0F172A] border-white/5'}`}>
-             {phase === 'scanning' ? 'SCANNING GEAR' : approved ? 'ALL CLEAR' : 'VIOLATION DETECTED'}
-           </div>
-           <div className="px-5 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-[#0F172A] border-white/5 text-slate-300 flex items-center gap-2">
-             <Volume2 className="w-4 h-4 text-slate-400" /> AUDIO ON
-           </div>
-        </div>
-      </div>
+    <>
+      <style>{kf}</style>
+      <div className="min-h-[100dvh] flex flex-col font-['Inter',system-ui,sans-serif] bg-[#030803] text-white relative overflow-hidden select-none">
 
-      <div className="flex-1 flex flex-col items-center justify-center -mt-16 z-10 w-full overflow-hidden">
-        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-widest text-white mb-10 drop-shadow-lg">
-          PPE VERIFICATION
-        </h1>
+        {/* CRT scanlines */}
+        <div className="pointer-events-none fixed inset-0 z-50 mix-blend-overlay opacity-[.08]" style={{
+          background: "repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.3) 3px,rgba(0,0,0,.3) 4px)",
+        }} />
 
-        {/* Camera Feed */}
-        <div className="relative w-[600px] max-w-[90vw] aspect-[4/3] bg-[#0A0D14] rounded-[2rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col items-center justify-center transition-all duration-700">
-          <video 
-            ref={videoRef} 
-            autoPlay 
-            playsInline 
-            muted 
-            className={`absolute inset-0 w-full h-full object-cover -scale-x-100 transition-opacity duration-1000 ${phase === 'success' ? 'opacity-20 blur-sm flex-none' : 'opacity-100'}`} 
-          />
-          <canvas 
-            ref={canvasRef} 
-            width={800} 
-            height={600} 
-            className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-1000 ${phase === 'success' ? 'opacity-0 hidden' : 'opacity-100'}`} 
-          />
-
-          {/* Centered Results Overlays inside the frame */}
-          {phase === "result" && !approved && (
-            <div className="absolute inset-x-8 bottom-8 bg-red-950/90 backdrop-blur-xl border border-red-500/50 p-6 rounded-2xl flex items-center shadow-[0_0_40px_rgba(220,38,38,0.3)] gap-4 animate-in slide-in-from-bottom-5">
-              <AlertTriangle className="w-10 h-10 text-red-400 shrink-0" />
-              <div>
-                <p className="text-red-100 font-black text-xl tracking-widest uppercase">{text.accessDenied}</p>
-                <p className="text-red-400 font-bold tracking-widest text-xs mt-1">MISSING: {missingItems.join(", ").toUpperCase()}</p>
-              </div>
+        {/* ───── HEADER ───── */}
+        <header className="relative z-10 flex items-center justify-between px-3 sm:px-6 py-2 bg-[#060e06]/90 backdrop-blur-md border-b border-[#4cff72]/20">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="size-7 sm:size-8 rounded-lg bg-[#4cff72]/15 border border-[#4cff72]/30 flex items-center justify-center text-base sm:text-lg shrink-0">🛡️</div>
+            <div className="min-w-0">
+              <div className="text-[#4cff72] text-[10px] sm:text-xs font-bold tracking-[.18em] uppercase leading-none truncate">SafeGuard AI</div>
+              <div className="text-[#4cff72]/50 text-[8px] sm:text-[9px] tracking-[.12em] uppercase leading-none mt-0.5">PPE Compliance Scanner</div>
             </div>
-          )}
+          </div>
 
-          {/* Success Overlay replacing camera entirely inside the frame */}
-          {phase === "success" && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5 }}
-              className="absolute inset-0 z-50 bg-[#05050A]/90 backdrop-blur-xl flex flex-col items-center justify-center"
-            >
-              <div className="relative flex items-center justify-center mb-10">
-                {/* Expanding pulse rings */}
-                <motion.div 
-                  initial={{ scale: 0.5, opacity: 0 }}
-                  animate={{ scale: [1, 1.5, 2], opacity: [1, 0.5, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
-                  className="absolute w-32 h-32 rounded-full border border-emerald-500/50"
-                />
-                <motion.div 
-                  initial={{ scale: 0.5, opacity: 0 }}
-                  animate={{ scale: [1, 1.5, 2], opacity: [1, 0.5, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut", delay: 0.4 }}
-                  className="absolute w-32 h-32 rounded-full border border-emerald-500/50"
-                />
-                <motion.div 
-                  initial={{ scale: 0.5, opacity: 0 }}
-                  animate={{ scale: [1, 1.5, 2], opacity: [1, 0.5, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut", delay: 0.8 }}
-                  className="absolute w-32 h-32 rounded-full border border-emerald-500/50"
-                />
-                
-                {/* Main Success Circle */}
-                <motion.div
-                  initial={{ scale: 0, boxShadow: "0px 0px 0px rgba(52,211,153,0)" }}
-                  animate={{ scale: 1, boxShadow: "0px 0px 80px rgba(52,211,153,0.5)" }}
-                  transition={{ type: "spring", bounce: 0.5, duration: 0.8 }}
-                  className="w-32 h-32 bg-linear-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center z-10"
+          {/* Worker chip */}
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-[#4cff72]/8 border border-[#4cff72]/20">
+            <div className="size-6 rounded-full bg-[#4cff72]/20 flex items-center justify-center text-[9px] font-bold text-[#4cff72]">{initials}</div>
+            <span className="text-white/80 text-[10px] font-bold tracking-wider">{workerName}</span>
+            <span className="text-[#4cff72]/50 text-[9px] tracking-wider">{workerCode}</span>
+          </div>
+
+          {/* Status beacon */}
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-full border transition-colors duration-500" style={{ borderColor: `${statusColor}40`, background: `${statusColor}08` }}>
+              <div className="size-2 rounded-full animate-pulse" style={{ background: statusColor, boxShadow: `0 0 8px ${statusColor}` }} />
+              <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-[.12em]" style={{ color: statusColor }}>{statusLabel}</span>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-[#4cff72] text-sm sm:text-base font-bold tracking-[.1em] tabular-nums leading-none">{fTime}</div>
+              <div className="text-[#4cff72]/40 text-[8px] tracking-[.1em] uppercase leading-none mt-0.5">{fDate}</div>
+            </div>
+          </div>
+        </header>
+
+        {/* ───── MAIN ───── */}
+        <main className="relative z-10 flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+          {/* ── LEFT: Camera feed + overlay ── */}
+          <div className="flex-1 relative bg-black min-h-[40vh] lg:min-h-0">
+            {/* Video */}
+            <video
+              ref={videoRef}
+              className="absolute inset-0 w-full h-full object-cover"
+              autoPlay muted playsInline
+            />
+
+            {/* Detection overlay canvas  */}
+            <canvas ref={overlayRef} className="absolute inset-0 w-full h-full z-10 pointer-events-none" />
+
+            {/* Hidden capture canvas */}
+            <canvas ref={canvasRef} className="hidden" />
+
+            {/* Scanline animation while scanning */}
+            {scanning && (
+              <div className="absolute left-0 w-full h-[4%] bg-gradient-to-b from-transparent via-[#4cff72]/30 to-transparent z-20 pointer-events-none" style={{ animation: "ppe-scanline 1.5s linear infinite" }} />
+            )}
+
+            {/* Grid overlay */}
+            <div className="absolute inset-0 z-[5] pointer-events-none opacity-[.06]" style={{
+              backgroundImage: "linear-gradient(#4cff72 1px, transparent 1px), linear-gradient(90deg, #4cff72 1px, transparent 1px)",
+              backgroundSize: "60px 60px",
+            }} />
+
+            {/* Top-left HUD badge */}
+            <div className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur-sm border border-[#4cff72]/20">
+              <div className="size-2 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-white text-[10px] font-bold tracking-[.1em] uppercase">Live Feed</span>
+              {scanCount > 0 && (
+                <span className="text-[#4cff72]/60 text-[9px] tracking-wider ml-1">· Scan #{scanCount}</span>
+              )}
+            </div>
+
+            {/* YOLO model badge */}
+            <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-sm border border-[#4cff72]/15">
+              <span className="text-[#4cff72]/60 text-[8px] sm:text-[9px] tracking-[.1em] uppercase font-bold">YOLOv8m · PPE Detection</span>
+            </div>
+
+            {/* Bottom detection count strip */}
+            <div className="absolute bottom-0 left-0 right-0 z-20 flex items-center gap-3 px-4 py-2 bg-gradient-to-t from-black/80 to-transparent">
+              <span className="text-[#4cff72] text-[10px] font-bold tracking-wider uppercase">
+                {detections.length} detection{detections.length !== 1 ? "s" : ""}
+              </span>
+              {compliantDets.length > 0 && (
+                <span className="text-[#4cff72]/70 text-[9px]">✓ {compliantDets.length} compliant</span>
+              )}
+              {requiredViolationDets.length > 0 && (
+                <span className="text-[#ff3344]/90 text-[9px]">✗ {requiredViolationDets.length} violation{requiredViolationDets.length !== 1 ? "s" : ""}</span>
+              )}
+              {optionalViolationDets.length > 0 && (
+                <span className="text-[#ffb042]/80 text-[9px]">⚠ {optionalViolationDets.length} optional</span>
+              )}
+            </div>
+
+            {/* Error banner */}
+            {error && (
+              <div className="absolute bottom-14 left-4 right-4 z-20 px-4 py-2 bg-[#ff3344]/90 rounded-lg text-white text-xs font-bold text-center">
+                {error}
+              </div>
+            )}
+          </div>
+
+          {/* ── RIGHT: Status panel ── */}
+          <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col bg-[#060e06]/95 backdrop-blur-md border-l border-[#4cff72]/15 overflow-y-auto">
+
+            {/* Verdict banner */}
+            <div className="p-4 sm:p-5 border-b border-[#4cff72]/10" style={{ animation: "ppe-slide-up .4s ease-out" }}>
+              {approved === null && !noDetections ? (
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-[#4cff72]/10 border border-[#4cff72]/20 flex items-center justify-center text-lg animate-pulse">📡</div>
+                  <div>
+                    <h2 className="text-white text-base font-bold tracking-[.12em] uppercase">Ready to Scan</h2>
+                    <p className="text-[#4cff72]/40 text-[10px] tracking-wider uppercase">Tap Scan PPE to begin detection</p>
+                  </div>
+                </div>
+              ) : approved === null && noDetections ? (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-[#ffb042]/8 border border-[#ffb042]/25">
+                  <div className="size-11 rounded-xl bg-[#ffb042] flex items-center justify-center text-[#030803] shrink-0 shadow-[0_0_15px_rgba(255,176,66,.4)]">
+                    <svg className="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                  </div>
+                  <div>
+                    <h2 className="text-[#ffb042] text-lg font-black tracking-[.14em] uppercase">No PPE Detected</h2>
+                    <p className="text-white/70 text-[10px] tracking-wider">Ensure worker &amp; PPE are visible in frame, then scan again</p>
+                  </div>
+                </div>
+              ) : approved ? (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-[#4cff72]/8 border border-[#4cff72]/25" style={{ "--glow": "#4cff72", animation: "ppe-glow 2s ease-in-out infinite" } as React.CSSProperties}>
+                  <div className="size-11 rounded-xl bg-[#4cff72] flex items-center justify-center text-[#030803] shrink-0 shadow-[0_0_15px_rgba(76,255,114,.4)]">
+                    <svg className="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  </div>
+                  <div>
+                    <h2 className="text-[#4cff72] text-lg font-black tracking-[.14em] uppercase drop-shadow-[0_0_8px_rgba(76,255,114,.4)]">Verified</h2>
+                    <p className="text-white/70 text-[10px] tracking-wider">Logging out in {countdown}s…</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-[#ff3344]/8 border border-[#ff3344]/30" style={{ "--glow": "#ff3344", animation: "ppe-glow 1.5s ease-in-out infinite" } as React.CSSProperties}>
+                  <div className="size-11 rounded-xl bg-[#ff3344] flex items-center justify-center text-white shrink-0 shadow-[0_0_15px_rgba(255,51,68,.5)]">
+                    <svg className="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-[#ff3344] text-lg font-black tracking-[.14em] uppercase drop-shadow-[0_0_8px_rgba(255,51,68,.4)]">Entry Blocked</h2>
+                    <p className="text-white/70 text-[10px] tracking-wider">
+                      Missing: {missing.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(", ")}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Detection list */}
+            <div className="flex-1 p-4 sm:p-5 space-y-2 overflow-y-auto">
+              <h3 className="text-[#4cff72]/60 text-[9px] font-bold tracking-[.16em] uppercase mb-3">
+                Detection Results {scanCount > 0 && `(Scan #${scanCount})`}
+              </h3>
+
+              {detections.length === 0 && approved === null && (
+                <div className="text-center py-8">
+                  <div className="text-3xl mb-2 animate-pulse">📷</div>
+                  <p className="text-white/30 text-xs tracking-wider">Waiting for first scan…</p>
+                </div>
+              )}
+
+              {detections.length === 0 && approved !== null && (
+                <div className="text-center py-8">
+                  <div className="text-3xl mb-2">🔍</div>
+                  <p className="text-white/30 text-xs tracking-wider">No PPE items detected in frame</p>
+                  <p className="text-[#4cff72]/30 text-[9px] tracking-wider mt-1">Ensure worker is visible in camera</p>
+                </div>
+              )}
+
+              {/* Compliant items */}
+              {compliantDets.map((det, i) => {
+                const meta = PPE_META[det.class] || { icon: "✓", label: det.label };
+                return (
+                  <div key={`c-${i}`} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#4cff72]/5 border border-[#4cff72]/15 transition-all" style={{ animation: `ppe-slide-up ${0.2 + i * 0.08}s ease-out` }}>
+                    <span className="text-xl shrink-0">{meta.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-white text-sm font-bold tracking-wider truncate">{meta.label}</span>
+                        <span className="text-[#4cff72] text-[10px] font-bold tabular-nums">{Math.round(det.confidence * 100)}%</span>
+                      </div>
+                      <div className="mt-1 h-1 bg-[#4cff72]/10 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#4cff72] rounded-full transition-all duration-500" style={{ width: `${det.confidence * 100}%` }} />
+                      </div>
+                    </div>
+                    <svg className="size-5 text-[#4cff72] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  </div>
+                );
+              })}
+
+              {/* Required Violations */}
+              {requiredViolationDets.map((det, i) => {
+                const meta = PPE_META[det.class] || { icon: "✗", label: det.label };
+                return (
+                  <div key={`v-${i}`} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#ff3344]/8 border border-[#ff3344]/25 transition-all" style={{ animation: `ppe-slide-up ${0.2 + i * 0.08}s ease-out` }}>
+                    <span className="text-xl shrink-0">{meta.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-white text-sm font-bold tracking-wider truncate">{meta.label}</span>
+                        <span className="text-[#ff3344] text-[10px] font-bold tabular-nums">{Math.round(det.confidence * 100)}%</span>
+                      </div>
+                      <div className="mt-1 h-1 bg-[#ff3344]/10 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#ff3344] rounded-full transition-all duration-500" style={{ width: `${det.confidence * 100}%` }} />
+                      </div>
+                    </div>
+                    <svg className="size-5 text-[#ff3344] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </div>
+                );
+              })}
+
+              {/* Optional Violations (waived by admin settings) */}
+              {optionalViolationDets.length > 0 && (
+                <>
+                  <h3 className="text-[#ffb042]/60 text-[9px] font-bold tracking-[.16em] uppercase mt-4 mb-1">Optional Items (Waived)</h3>
+                  {optionalViolationDets.map((det, i) => {
+                    const meta = PPE_META[det.class] || { icon: "⚠", label: det.label };
+                    return (
+                      <div key={`o-${i}`} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#ffb042]/5 border border-[#ffb042]/15 transition-all" style={{ animation: `ppe-slide-up ${0.2 + i * 0.08}s ease-out` }}>
+                        <span className="text-xl shrink-0">{meta.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-white text-sm font-bold tracking-wider truncate">{meta.label}</span>
+                            <span className="text-[#ffb042] text-[8px] font-black tracking-wider px-1.5 py-0.5 rounded bg-[#ffb042]/10 border border-[#ffb042]/20">OPTIONAL</span>
+                          </div>
+                          <div className="mt-1 h-1 bg-[#ffb042]/10 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#ffb042] rounded-full transition-all duration-500" style={{ width: `${det.confidence * 100}%` }} />
+                          </div>
+                        </div>
+                        <svg className="size-5 text-[#ffb042] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+
+            {/* Controls */}
+            <div className="p-4 sm:p-5 border-t border-[#4cff72]/10 space-y-3">
+              <div className="flex gap-3">
+                <button
+                  onClick={runScan}
+                  disabled={scanning || approved === true}
+                  className="flex-1 py-3 bg-[#4cff72] hover:bg-[#6fff96] disabled:opacity-50 text-[#030803] font-black uppercase text-sm tracking-[.12em] rounded-lg transition-all active:scale-95 shadow-[0_0_20px_rgba(76,255,114,.25)]"
                 >
-                  <motion.div
-                    initial={{ scale: 0, rotate: -90 }}
-                    animate={{ scale: 1, rotate: 0 }}
-                    transition={{ delay: 0.3, type: "spring", bounce: 0.6 }}
-                  >
-                    <CheckCircle2 className="w-16 h-16 text-emerald-50" strokeWidth={3} />
-                  </motion.div>
-                </motion.div>
+                  {scanning ? "Scanning…" : approved === true ? "✓ Verified" : "Scan PPE"}
+                </button>
+                <button
+                  onClick={() => navigate("/kiosk")}
+                  className="px-5 py-3 border border-[#4cff72]/25 text-[#4cff72]/60 hover:text-[#4cff72] hover:border-[#4cff72]/50 font-bold uppercase text-sm tracking-[.12em] rounded-lg transition-all active:scale-95"
+                >
+                  ← Back
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* ───── FOOTER ───── */}
+        <footer className="relative z-10 flex flex-wrap items-center justify-between gap-x-4 gap-y-0.5 px-4 sm:px-6 py-1 bg-[#060e06]/80 backdrop-blur-sm border-t border-[#4cff72]/15 text-[#4cff72]/30 text-[8px] sm:text-[9px] uppercase tracking-[.1em] font-medium">
+          <span>YOLOv8m PPE Detector&ensp;·&ensp;keremberke/protective-equipment</span>
+          <span>10 Classes&ensp;·&ensp;Conf ≥ 35%&ensp;·&ensp;Real-time Inference</span>
+        </footer>
+
+        {/* ═══════ FULL-SCREEN SUCCESS POPUP ═══════ */}
+        {approved === true && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ animation: "popup-fade .3s ease-out" }}>
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-[#030803]/85 backdrop-blur-md" />
+
+            {/* Popup card */}
+            <div
+              className="relative z-10 w-[92vw] max-w-md mx-auto rounded-3xl border-2 border-[#4cff72]/30 bg-[#060e06] p-8 sm:p-10 flex flex-col items-center gap-6 shadow-[0_0_80px_rgba(76,255,114,.15)]"
+              style={{ animation: "popup-scale .6s cubic-bezier(.34,1.56,.64,1) forwards" }}
+            >
+              {/* Pulsing ring + check circle */}
+              <div className="relative">
+                <div className="absolute -inset-3 rounded-full border-2 border-[#4cff72]/20" style={{ animation: "popup-ring 2s ease-in-out .6s infinite" }} />
+                <div className="size-28 sm:size-32 rounded-full bg-[#4cff72]/10 border-2 border-[#4cff72] flex items-center justify-center shadow-[0_0_50px_rgba(76,255,114,.3)]">
+                  <svg className="size-14 sm:size-16 text-[#4cff72]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ strokeDasharray: 100, strokeDashoffset: 100, animation: "popup-check .5s ease-out .35s forwards" }}>
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
               </div>
 
-              <motion.h1 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5, duration: 0.5 }}
-                className="text-2xl md:text-3xl font-black uppercase tracking-widest text-emerald-400 mt-2 text-center drop-shadow-lg"
-              >
-                 {text.accessGranted}
-              </motion.h1>
-              <motion.p 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.7 }}
-                className="mt-4 text-emerald-100/70 text-sm font-bold tracking-[0.2em]"
-              >
-                {text.nextText}
-              </motion.p>
-            </motion.div>
-          )}
-        </div>
+              <div className="text-center space-y-2" style={{ animation: "popup-fade .5s ease-out .25s both" }}>
+                <h1 className="text-[#4cff72] text-2xl sm:text-3xl font-black tracking-[.2em] uppercase drop-shadow-[0_0_16px_rgba(76,255,114,.4)]">Entry Granted</h1>
+                <p className="text-white/60 text-xs sm:text-sm tracking-[.12em] uppercase">All Required PPE Verified</p>
+                {optionalViolationDets.length > 0 && (
+                  <p className="text-[#ffb042]/60 text-[10px] tracking-wider">{optionalViolationDets.length} optional item{optionalViolationDets.length !== 1 ? "s" : ""} waived by admin</p>
+                )}
+              </div>
 
-        {/* Action Button Section directly below frame */}
-        <div className="mt-8 w-[600px] max-w-[90vw]">
-          {phase === "scanning" && (
-            <div className="w-full px-8 py-4 bg-[#0F172A] border border-white/5 rounded-2xl flex justify-center items-center gap-4 group">
-               <Scan className="w-5 h-5 text-indigo-400 animate-pulse" />
-               <span className="text-sm font-bold tracking-widest uppercase text-slate-200">
-                 {text.scanning}
-               </span>
+              {/* Worker chip */}
+              <div className="w-full bg-[#4cff72]/5 border border-[#4cff72]/15 rounded-2xl p-4 flex items-center gap-3" style={{ animation: "popup-fade .5s ease-out .4s both" }}>
+                <div className="size-12 rounded-xl bg-[#4cff72]/15 border border-[#4cff72]/25 flex items-center justify-center text-[#4cff72] font-black text-base tracking-wider">{initials}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-bold text-base tracking-wider truncate">{workerName}</p>
+                  <p className="text-[#4cff72]/50 text-[10px] font-bold tracking-[.15em] uppercase">{workerCode}</p>
+                </div>
+                <svg className="size-6 text-[#4cff72] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+              </div>
+
+              {/* Countdown */}
+              <div className="w-full space-y-2" style={{ animation: "popup-fade .5s ease-out .55s both" }}>
+                <div className="flex items-center justify-center gap-2">
+                  <div className="size-2 rounded-full bg-[#4cff72]/50 animate-pulse" />
+                  <span className="text-white/40 text-xs tracking-[.14em] uppercase font-bold">Auto-logout in <span className="text-[#4cff72] text-sm font-black tabular-nums">{countdown}</span>s</span>
+                </div>
+                <div className="h-1.5 bg-[#4cff72]/10 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#4cff72] rounded-full" style={{ animation: "popup-progress 5s linear forwards" }} />
+                </div>
+                <p className="text-center text-white/15 text-[8px] tracking-[.12em] uppercase">Session will end automatically</p>
+              </div>
             </div>
-          )}
-          {phase === "result" && !approved && (
-            <button 
-              onClick={() => window.location.reload()}
-              className="w-full px-8 py-4 bg-[#0F172A] hover:bg-red-950/40 border border-white/5 hover:border-red-500/30 rounded-2xl flex justify-center items-center gap-4 group transition-colors active:scale-95"
-            >
-               <AlertTriangle className="w-5 h-5 text-red-400 group-hover:text-red-300" />
-               <span className="text-sm font-bold tracking-widest uppercase text-red-400 group-hover:text-red-300">
-                 {text.retryText}
-               </span>
-            </button>
-          )}
-          {phase === "success" && (
-            <button 
-              onClick={handleLogout}
-              className="w-full px-8 py-4 bg-[#0F172A] border border-emerald-500/20 hover:bg-emerald-950/40 hover:border-emerald-500/40 rounded-2xl flex justify-center items-center gap-4 group transition-colors active:scale-95 cursor-pointer"
-            >
-               <LogOut className="w-5 h-5 text-emerald-400 group-hover:text-emerald-300" />
-               <span className="text-sm font-bold tracking-widest uppercase text-emerald-400 group-hover:text-emerald-300">
-                 {text.logoutText}
-               </span>
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }
