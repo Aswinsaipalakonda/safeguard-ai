@@ -1,0 +1,19 @@
+# 0: helmet
+# 1: no_helmet
+# 2: safety_vest
+# 3: no_vest
+# 4: safety_gloves
+# 5: no_gloves
+# 6: safety_goggles
+# 7: safety_boots
+# 8: body_harness
+
+0: helmet
+1: no_helmet
+2: safety_vest
+3: no_vest
+4: safety_gloves
+5: no_gloves
+6: safety_goggles
+7: safety_boots
+8: body_harness

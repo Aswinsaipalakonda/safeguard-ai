@@ -1,0 +1,32 @@
+# SafeGuard AI Default Roles and Responsibilities
+
+This file documents the default roles created in the system and their associated responsibilities in the scope of the Manufacturing Plant use-case.
+
+## 1. ADMIN
+**Login**: `admin@safeguard.com` / `admin_user`
+**Password**: `admin123`
+
+**Responsibilities:**
+- Has complete control over the system configuration.
+- Can create, edit, or remove new zones, cameras, and integration settings.
+- Can view and export high-level DGMS Compliance Data for the entire factory.
+- Can manage roles for other users (creating new Supervisors or Workers).
+
+## 2. SUPERVISOR
+**Login**: `supervisor@safeguard.com` / `supervisor_user`
+**Password**: `admin123`
+
+**Responsibilities:**
+- Has access to the **Supervisor Dashboard**.
+- Monitors the live grid of cameras to watch for real-time safety violations (missing helmets, vests, etc.).
+- Can view and sort the Violations Log to see which workers require safety retraining.
+- Can pull daily, weekly, and monthly Compliance Reports to present to higher management.
+
+## 3. WORKER
+**Login**: `worker@safeguard.com` / `worker_user`
+**Password**: `admin123`
+
+**Responsibilities:**
+- Associates with the **Worker Kiosk**.
+- Primarily interacts with the system physically using Face Scans (attendance) and Camera Vision (automated PPE validation).
+- Needs minimal computer literacy; the interface is designed around massive feedback loops (Red/Green icons) and voice feedback.

@@ -1,0 +1,12 @@
+Django>=4.2,<5.3
+djangorestframework
+djangorestframework-simplejwt
+django-cors-headers
+psycopg2-binary
+django-environ
+redis
+coreapi
+channels
+daphne
+channels-redis
+asgiref

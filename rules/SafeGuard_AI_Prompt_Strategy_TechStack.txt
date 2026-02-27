@@ -1,0 +1,714 @@
+SafeGuard AI
+Prompt Engineering Strategy for AI Coding Agents + Final Tech Stack
+PROMPT STRATEGY
+Break-into-Phases Method
+6 Focused Prompts
+TECH STACK
+Production-Grade
+14 Core Technologies
+FOR AGENT
+Cursor / Bolt / v0 / Windsurf
+Any AI Coding Tool
+⚡  THE VERDICT: Break-Into-Phases Wins Every Time
+Giving an AI coding agent one massive prompt causes context overload, code drift, hallucinated APIs, and half-baked features. Breaking into 6 focused phases gives the agent a clear mental model per phase — producing cleaner code, fewer errors, and a working app faster.
+1. Single Prompt vs. Break-Phases — The Real Answer
+❌  SINGLE GIANT PROMPT
+✅  BREAK-INTO-PHASES (Recommended)
+✗  Agent loses track of context midway
+✓  Each prompt = one clear responsibility
+✗  Hallucinated imports, wrong API calls
+✓  Agent can verify each phase before moving on
+✗  Frontend built without knowing DB schema
+✓  DB schema confirmed before writing API
+✗  Voice alert system skipped or stubbed
+✓  Dedicated prompt = full voice implementation
+✗  50% complete features across the board
+✓  Each phase = fully working, testable module
+✗  Hard to debug — everything is tangled
+✓  Modular = isolated bugs, easy fixes
+✗  Agent asks 10 clarifying questions mid-build
+✓  All context front-loaded in Phase 0
+✗  You get spaghetti code
+✓  You get clean, layered architecture
+Rule of thumb: If your app has more than 3 features or involves a database + backend + frontend, always break. SafeGuard AI has 14+ major features — breaking into 6 phases is non-negotiable for quality output from any AI coding agent.
+2. The 6-Phase Prompt Strategy — Overview
+Each phase is a self-contained prompt sent after the previous phase is verified and working. Never send Phase 2 until Phase 1 is running correctly. This is the discipline that makes break-phase prompting work.
+Phase
+Name
+What Gets Built
+Verify Before Next
+P0
+Foundation & Setup
+Project scaffold, folder structure, env config, DB schema, Docker compose
+DB connects, migrations run, server starts on port 8000
+P1
+AI Detection Engine
+YOLOv8 integration, camera RTSP ingestion, PPE detection pipeline, confidence thresholds
+Detection runs at 25+ FPS, helmet/vest/gloves detected on test video
+P2
+Worker Identity System
+Face enrollment API, InsightFace ArcFace embeddings, worker profile CRUD, match endpoint
+Face enrolled, matched correctly, profile retrieved via API
+P3
+Alert & Voice Engine
+Alert event bus (Kafka/Redis), 4-level escalation logic, TTS voice alerts (10 languages), PA/wristband integration
+Alert fires in <500ms, voice plays in Hindi and Telugu on violation
+P4
+Dashboard & Worker Kiosk
+React dashboard (live feed, violation log, analytics), worker kiosk UI (pictogram-first, voice-guided check-in)
+Dashboard shows live alerts, kiosk runs morning briefing flow
+P5
+Compliance Reports & APIs
+Auto PDF/Excel report generation, DGMS format export, ESG data endpoints, WhatsApp integration, external API
+Report generated in <30s, DGMS export correct, WhatsApp message sent
+3. The 6 Prompts — Complete, Copy-Ready
+PHASE 0 — Foundation, Project Setup & Database Schema
+Send this first. This is the most important prompt — it sets the architecture for everything that follows. Get this right and all other phases build cleanly on top.
+PROMPT 0   Foundation & Setup
+You are building SafeGuard AI — a Worker Safety PPE Violation Detector system.
+Use the following tech stack EXACTLY:
+  Backend: Python 3.11, FastAPI, SQLAlchemy ORM, Alembic migrations
+  Database: PostgreSQL 15 (via Docker), TimescaleDB extension for events
+  Cache/Queue: Redis 7 for alert pub/sub
+  Storage: MinIO (S3-compatible) for video clips and report files
+  Container: Docker + docker-compose for all services
+ 
+Create this folder structure:
+  safeguard-ai/
+    backend/           - FastAPI app
+      api/             - route handlers
+      core/            - config, security, logging
+      models/          - SQLAlchemy ORM models
+      schemas/         - Pydantic request/response schemas
+      services/        - business logic
+      alembic/         - DB migrations
+    ai_engine/         - vision and face detection
+    alert_engine/      - alert and voice system
+    frontend/          - React dashboard
+    kiosk/             - Worker kiosk React app
+    docker-compose.yml
+    .env.example
+ 
+Create ALL database models with SQLAlchemy for these tables:
+  workers (id, name, employee_code, language_preference, face_embedding JSONB,
+           compliance_rate FLOAT, enrolled_at, is_active)
+  violations (id, worker_id FK, ppe_type ENUM, zone, camera_id, confidence FLOAT,
+              image_path, resolved_at, created_at)
+  alerts (id, violation_id FK, level INT 1-6, channel ENUM, sent_at, acknowledged_at)
+  compliance_reports (id, site_id, period_start, period_end, report_path, created_at)
+  zones (id, name, required_ppe JSONB, camera_ids JSONB, is_high_risk BOOL)
+  sites (id, name, location, timezone, pa_system_ip, pa_system_port)
+ 
+Create docker-compose.yml with: postgres, timescaledb, redis, minio, backend
+Create .env.example with all required environment variables.
+Create alembic initial migration and run it.
+Create a FastAPI health check endpoint GET /health that returns DB + Redis status.
+ 
+STOP after this phase. Do not build any features yet.
+DELIVERABLE: Running docker-compose up, /health returns 200 with DB connected.
+PHASE 1 — AI Detection Engine (YOLOv8 + PPE Detection Pipeline)
+Only send after Phase 0 passes health check. This builds the core AI brain — the video processing and PPE detection pipeline.
+PROMPT 1   AI Detection Engine
+Phase 0 is complete. Now build the AI detection engine for SafeGuard AI.
+ 
+DETECTION SERVICE: ai_engine/detector.py
+  Use ultralytics YOLOv8 (pip install ultralytics).
+  Load model: yolov8m.pt as base, we will fine-tune later.
+  For now, use COCO classes to detect: person(0), backpack-for vest approx.
+  Create a custom class mapping file: ai_engine/ppe_classes.yaml
+    - 0: helmet
+    - 1: no_helmet
+    - 2: safety_vest
+    - 3: no_vest
+    - 4: safety_gloves
+    - 5: no_gloves
+    - 6: safety_goggles
+    - 7: safety_boots
+    - 8: body_harness
+ 
+  Detection pipeline:
+    1. Accept RTSP stream URL or local video file path
+    2. Read frames at 30 FPS using OpenCV
+    3. Run YOLOv8 inference on each frame (batch=1)
+    4. For each detected person, check which PPE is present/missing
+    5. If ANY required PPE for the zone is missing with confidence > 0.87:
+       - Extract worker face ROI from frame
+       - Emit violation event to Redis channel 'violations'
+       - Save annotated frame to MinIO bucket 'violations'
+    6. Return annotated frame with bounding boxes and labels
+ 
+CAMERA MANAGER: ai_engine/camera_manager.py
+  - Manage multiple RTSP streams concurrently using asyncio
+  - Each camera runs in its own async task
+  - Support up to 16 concurrent streams per node
+  - Reconnect automatically on stream drop (max 3 retries, then alert)
+  - Associate each camera_id with a zone from the zones table
+ 
+API ENDPOINTS to add in backend/api/detection.py:
+  POST /cameras/start  - start monitoring a camera RTSP stream
+  POST /cameras/stop   - stop a camera stream
+  GET  /cameras        - list all active cameras and their status
+  GET  /violations     - paginated list of violations with filters
+  GET  /violations/{id} - single violation with image URL
+  WebSocket /ws/live/{camera_id} - stream annotated frames as JPEG
+ 
+PERFORMANCE REQUIREMENTS:
+  - Detection latency: < 200ms per frame (use GPU if available, CPU fallback)
+  - Use ONNX export of YOLOv8 for CPU deployments
+  - Frame queue max size: 5 (drop oldest if full to maintain real-time)
+ 
+STOP here. Test with a sample video file before Phase 2.
+DELIVERABLE: POST /cameras/start with a test video, violations appear in DB.
+PHASE 2 — Worker Identity (Facial Recognition + Profile System)
+Only send after Phase 1 detects PPE violations correctly on a test video.
+PROMPT 2   Worker Identity & Facial Recognition
+Phase 1 is complete and detecting violations. Now build the worker identity system.
+ 
+FACIAL RECOGNITION ENGINE: ai_engine/face_recognition.py
+  Use insightface library (pip install insightface onnxruntime)
+  Model: buffalo_l (ArcFace ResNet100 — best accuracy)
+  Initialize: app = FaceAnalysis(name='buffalo_l')
+ 
+  Functions to implement:
+    enroll_face(worker_id, image_bytes) -> embedding (512-dim numpy array)
+      - Detect face in image
+      - Extract 512-dimensional ArcFace embedding
+      - Normalize embedding (L2 norm)
+      - Store as JSONB in workers.face_embedding
+      - Return success/failure with confidence
+ 
+    identify_face(face_image_bytes, threshold=0.45) -> {worker_id, name, confidence}
+      - Extract embedding from query face
+      - Load all embeddings from workers table (cache in Redis with 5min TTL)
+      - Compute cosine similarity against all enrolled workers
+      - Return best match if similarity > threshold, else 'unknown'
+      - Performance target: < 50ms for 10,000 workers
+ 
+  Integration with detection pipeline:
+    When a violation is emitted to Redis 'violations' channel:
+      1. Extract face ROI from the violation frame
+      2. Run identify_face()
+      3. Enrich the violation record with worker_id (or null if unknown)
+      4. Update worker compliance_rate in workers table
+ 
+WORKER PROFILE API: backend/api/workers.py
+  POST /workers                     - create worker (name, employee_code, language)
+  POST /workers/{id}/enroll-face    - upload face photo for enrollment
+    - Accept multipart/form-data image
+    - Run enroll_face(), store embedding
+  GET  /workers                     - list workers with compliance stats
+  GET  /workers/{id}               - worker detail + violation history
+  GET  /workers/{id}/safety-score  - current week compliance percentage
+  PUT  /workers/{id}               - update worker details
+  DELETE /workers/{id}/face        - remove face embedding (right to erasure)
+ 
+PRIVACY RULES (implement strictly):
+  - Never store actual face images — only 512-dim embeddings
+  - Add is_privacy_zone boolean to zones table
+  - In privacy zones: skip face identification entirely
+  - All embeddings encrypted at rest using Fernet (cryptography library)
+ 
+STOP here. Test face enrollment and recognition before Phase 3.
+DELIVERABLE: Enroll 3 test faces, trigger violation, worker correctly identified.
+PHASE 3 — Alert Engine + Voice System (The Literacy-First Layer)
+This is the most unique and impactful phase. The voice alert system in regional languages is what makes SafeGuard AI win in India. Give the agent full context on every alert level.
+PROMPT 3   Alert Engine & Voice System (23 Languages)
+Phase 2 is complete. Now build the real-time alert engine and voice system.
+This is the most critical differentiator of SafeGuard AI — voice alerts for
+illiterate workers in their regional language.
+ 
+ALERT ENGINE: alert_engine/alert_processor.py
+  Subscribe to Redis channel 'violations'
+  Implement 6-level escalation ladder:
+ 
+  LEVEL 1 — Instant Visual + Voice (T+0ms)
+    - Trigger: violation detected with confidence > 0.87
+    - Action: emit WebSocket event to dashboard for flash overlay
+    - Action: call VoiceAlertService.announce(zone, worker, missing_ppe)
+    - Store alert in alerts table (level=1)
+ 
+  LEVEL 2 — Supervisor Push Notification (T+5 seconds)
+    - If violation still unresolved after 5 sec
+    - Action: Send FCM push to supervisor mobile app with:
+      {worker_name, zone, ppe_missing, camera_screenshot_url, timestamp}
+    - Store alert in alerts table (level=2)
+ 
+  LEVEL 3 — Wristband Vibration (T+30 seconds)
+    - If worker is enrolled and has registered wristband
+    - Action: Publish MQTT message to topic workers/{worker_id}/wristband
+      Payload: {vibrate: 3, beep: true, duration_ms: 500}
+    - Store alert in alerts table (level=3)
+ 
+  LEVEL 4 — Supervisor Auto-Call (T+90 seconds)
+    - Action: Use Twilio API to auto-call supervisor's registered number
+    - Play TwiML: 'PPE violation in Zone {zone}. Worker {name}. Immediate attention required.'
+    - Store alert in alerts table (level=4)
+ 
+  LEVEL 5 — Site Manager Dashboard Flag (T+3 minutes)
+    - Action: Set violation.is_escalated=true
+    - Emit WebSocket event to site-manager channel
+    - Store alert in alerts table (level=5)
+ 
+  LEVEL 6 — Access Lockout (configurable, T+3 minutes)
+    - If zone has access_control=true AND violation persists
+    - Action: POST to zone.lockout_endpoint to trigger turnstile/barrier
+    - Store alert in alerts table (level=6)
+ 
+VOICE ALERT SERVICE: alert_engine/voice_service.py
+  Use gTTS (pip install gTTS) for TTS in multiple languages.
+  Support these languages initially (expand to 23 via Azure TTS in production):
+    hi: Hindi, te: Telugu, ta: Tamil, bn: Bengali, mr: Marathi,
+    kn: Kannada, gu: Gujarati, pa: Punjabi, or: Odia, ml: Malayalam
+ 
+  ALERT MESSAGE TEMPLATES (translate all to each language):
+    helmet_missing: 'Attention {name}. Please wear your helmet immediately.
+                     Helmet required in this zone.'
+    vest_missing:   'Attention {name}. Please wear your safety vest.
+                     Vest required before entering this zone.'
+    gloves_missing: 'Attention {name}. Please wear your safety gloves.
+                     Gloves are mandatory here.'
+    generic:        'PPE violation detected in Zone {zone}.
+                     A supervisor has been notified.'
+    morning_brief:  'Good morning {name}. You have {stars} safety stars
+                     this week. Remember your {missing_ppe} today.'
+ 
+  announce(zone_id, worker, missing_ppe_list):
+    1. Get worker language preference (default: 'hi')
+    2. Generate appropriate message template
+    3. Use gTTS to generate MP3 audio
+    4. Cache audio in Redis for 1 hour (same alert repeated = use cache)
+    5. POST audio file to PA system HTTP endpoint OR
+       play via pygame if local speakers connected
+ 
+  MORNING BRIEFING FLOW (run at 06:30 site timezone daily):
+    For each expected worker (based on schedule or all enrolled workers):
+      1. Generate personalized morning message in their language
+      2. Queue for kiosk playback when they check in
+ 
+MQTT BROKER: alert_engine/mqtt_manager.py
+  Use paho-mqtt to connect to Mosquitto broker (add to docker-compose)
+  Topics:
+    workers/{worker_id}/wristband  -> vibration commands
+    zones/{zone_id}/pa_announce   -> PA system audio trigger
+    cameras/{camera_id}/status    -> camera health events
+ 
+API ENDPOINTS: backend/api/alerts.py
+  GET  /alerts                - paginated alert history
+  POST /alerts/{id}/acknowledge - supervisor acknowledges alert
+  GET  /alerts/active         - all unresolved violations with timer
+  POST /workers/{id}/notify   - manually trigger voice notification
+ 
+STOP here. Test the full escalation flow with a simulated violation.
+DELIVERABLE: Violation triggers voice alert in Hindi + Telugu + push notification.
+PHASE 4 — Dashboard + Worker Kiosk UI
+Only send after voice alerts are firing correctly. This builds both the supervisor dashboard and the ground-level worker kiosk — two completely different UI paradigms.
+PROMPT 4   React Dashboard + Worker Kiosk (Pictogram-First UI)
+Phase 3 is complete. Now build the frontend: supervisor dashboard + worker kiosk.
+These are TWO SEPARATE React apps in the same repo.
+ 
+TECH: React 18, Vite, TypeScript, TailwindCSS, shadcn/ui
+  State: Zustand (lightweight, no Redux boilerplate)
+  Charts: Recharts for analytics
+  Real-time: native WebSocket to backend /ws/ endpoints
+  HTTP: Axios with JWT interceptor
+ 
+===== APP 1: SUPERVISOR DASHBOARD (frontend/) =====
+Route structure:
+  /dashboard    - live monitoring overview
+  /violations   - violation log with filters
+  /workers      - worker list, enrollment, profiles
+  /zones        - zone configuration
+  /reports      - compliance report generation
+  /settings     - site config, escalation thresholds
+ 
+LIVE MONITORING PAGE (/dashboard):
+  - Grid of camera feeds (4x4 max, JPEG stream from WebSocket)
+  - Each feed shows: camera name, zone, active violation count
+  - Violation flash overlay: red pulsing border + violation detail card
+  - Alert ticker at top: scrolling live violations with worker name + zone
+  - Stats cards: Today's violations / Active now / Compliance rate / Escalated
+  - Zone heatmap: color-coded grid showing violation density per zone
+ 
+VIOLATION LOG PAGE (/violations):
+  - Filterable table: by zone, ppe_type, worker, date range, resolved/unresolved
+  - Each row: timestamp, worker photo(avatar), name, zone, PPE missing,
+    confidence %, screenshot thumbnail, alert level reached, status
+  - Click row -> violation detail modal with full image, escalation timeline,
+    worker compliance history chart
+ 
+WORKER PROFILE PAGE (/workers/{id}):
+  - Worker card: name, employee code, language, compliance rate gauge
+  - Safety star count (weekly)
+  - Violation history chart (last 30 days, by PPE type)
+  - Face enrollment status + re-enroll button
+  - Trigger manual voice alert button
+  - Export worker safety report PDF button
+ 
+===== APP 2: WORKER KIOSK (kiosk/) =====
+CRITICAL: This UI must be operable by completely illiterate workers.
+ZERO text instructions. Everything must be icons + voice + color.
+ 
+KIOSK CHECK-IN FLOW:
+  Screen 1 — FACE SCAN
+    - Full screen dark background
+    - Large animated face outline in center
+    - Text (large, vernacular language): 'Look at camera'
+    - Voice plays: 'Please look at the camera' (in worker's language)
+    - Camera activates, face detected, match attempted
+    - Loading spinner while matching
+ 
+  Screen 2 — WORKER RECOGNIZED
+    - Worker name in large font (vernacular script if known)
+    - 'Good morning [Name]!' greeting in their language via voice
+    - Safety stars display: 5 star icons (filled/empty) — NO numbers
+ 
+  Screen 3 — PPE STATUS CHECK
+    - 6 large PPE icons in a grid (helmet, vest, gloves, goggles, boots, harness)
+    - Each icon: GREEN background + checkmark if required + OK
+    - Each icon: RED background + X if required + MISSING
+    - Voice reads out missing PPE: 'Please wear your helmet. Helmet required.'
+    - If all GREEN: big green circle, celebration sound, 'You are safe to enter!'
+    - If any RED: 2-minute countdown timer, supervisor notified
+ 
+  Screen 4 — ENTRY APPROVED / DENIED
+    - APPROVED: Full screen green, thumbs up icon, voice: 'Have a safe day!'
+    - DENIED: Full screen red, stop hand icon, voice: 'Please get your PPE first'
+ 
+MORNING BRIEFING AUTO-PLAY (if worker hasn't checked in yet at 07:00):
+  - If in kiosk idle mode, play pre-generated audio briefing on loop
+  - Shows animated safety pictograms for the day's high-risk zones
+ 
+GAMIFICATION SCREEN (end of day check-out, or weekly Friday):
+  - Leaderboard: top 3 safe teams with trophy icons
+  - Animated star award ceremony for perfect-week workers
+  - Voice announcement of winners in site language
+ 
+STOP here. Test dashboard live feed + kiosk check-in flow end to end.
+DELIVERABLE: Kiosk check-in works, violation appears on dashboard in <2 seconds.
+PHASE 5 — Compliance Reports, APIs & Integrations
+Final phase. Builds the revenue-critical compliance reporting engine and all external integrations that make SafeGuard AI enterprise-ready.
+PROMPT 5   Compliance Reports, ESG Data & External Integrations
+Phase 4 is complete. Now build the reporting engine and external integrations.
+ 
+REPORT GENERATION: backend/services/report_service.py
+  Use ReportLab (pip install reportlab) for PDF generation.
+  Use openpyxl for Excel generation.
+ 
+  DAILY COMPLIANCE REPORT (auto-generated at midnight):
+    PDF Sections:
+      1. Header: Site name, date, logo placeholder
+      2. Executive Summary: Total violations, compliance %, worst zone, best zone
+      3. PPE Breakdown table: violations per PPE type with trend arrow
+      4. Zone Heatmap: table with color-coded cells (red/yellow/green)
+      5. Top 5 Repeat Offenders (anonymized by default, named if admin)
+      6. Hourly violation chart (bar chart)
+      7. Corrective Actions Log: all resolved violations with resolution time
+ 
+  DGMS INSPECTION REPORT (on-demand):
+    Follows Directorate General of Mines Safety standard format:
+      Form A: Site details, inspection period, total workforce
+      Form B: PPE provision status (helmets issued vs required)
+      Form C: Violation incident log in prescribed format
+      Form D: Corrective action completion status
+      Signature block for Safety Officer
+ 
+  ESG QUARTERLY REPORT:
+    - Incident rate per 100 workers (LTIFR calculation)
+    - PPE compliance percentage trend (line chart embedded)
+    - Near-miss incident count
+    - Training completion rate
+    - Carbon footprint of paper reduction (compliance digitization impact)
+    - Output as PDF + JSON for API access
+ 
+  INSURANCE PREMIUM REPORT:
+    - 12-month violation trend with month-over-month comparison
+    - Incident-free days counter
+    - Safety investment ROI estimate
+    - Actuarial risk score (LOW / MEDIUM / HIGH) with justification
+ 
+REPORT API: backend/api/reports.py
+  GET  /reports                  - list all generated reports
+  POST /reports/daily            - trigger daily report generation
+  POST /reports/dgms             - generate DGMS format report
+  POST /reports/esg              - generate ESG quarterly report
+  POST /reports/insurance        - generate insurance report
+  GET  /reports/{id}/download    - download PDF/Excel from MinIO
+  GET  /reports/analytics        - JSON data for dashboard charts
+  GET  /reports/kpi-summary      - key metrics for executive dashboard
+ 
+WHATSAPP INTEGRATION: backend/services/whatsapp_service.py
+  Use WhatsApp Business API (via Twilio or Meta Business API):
+  1. Supervisor violation alerts with image attachment
+  2. Weekly worker safety score as voice note (use TTS -> audio file)
+  3. Family notification: weekly score message to registered family number
+  4. Daily report summary to site manager
+ 
+  Template messages (pre-approved by WhatsApp):
+    VIOLATION_ALERT: 'Safety Alert: {worker} in Zone {zone} missing {ppe}.
+                      Please take action. View: {link}'
+    WEEKLY_SCORE:    'Worker Safety Update: {name} achieved {score}/5 safety
+                      stars this week at {site}. Thank you.'
+ 
+EXTERNAL INTEGRATIONS:
+  SAP PM Integration: backend/integrations/sap_pm.py
+    - Webhook receiver for work order data (who is working where today)
+    - Push violation events to SAP PM as safety observations
+ 
+  Twilio Voice: backend/integrations/twilio_client.py
+    - Auto-call supervisor on Level 4 alert
+    - Generate TwiML with dynamic zone and worker details
+ 
+  Email Reports: backend/integrations/email_service.py
+    - SMTP/SendGrid for daily report email to site manager
+    - Attach PDF report, inline key stats
+ 
+BACKGROUND JOBS: backend/tasks/scheduler.py
+  Use APScheduler (pip install apscheduler):
+  - Midnight: generate daily compliance report, email to managers
+  - 06:30: generate morning briefing audio for all workers
+  - 07:00: check for workers not yet checked in, alert supervisors
+  - Friday 18:00: generate weekly leaderboard, trigger kiosk announcement
+  - 1st of month: generate insurance and ESG reports
+ 
+STOP here. Do a full system end-to-end test.
+DELIVERABLE: Full cycle — face detected, violation logged, voice alert fired,
+dashboard updated, DGMS report generated, WhatsApp message sent.
+4. How to Use These Prompts — Rules for the Agent
+GOLDEN RULES — Follow These or Your Build Will Break
+R1
+Never send Phase N+1 until Phase N is fully working and tested. Test manually before pasting the next prompt.
+R2
+At the start of EVERY phase prompt, paste the last 10 lines of your current folder structure so the agent has context on what already exists.
+R3
+If the agent goes off-script (e.g., uses Flask instead of FastAPI, or SQLite instead of PostgreSQL), stop it immediately and correct before continuing.
+R4
+Always ask the agent: 'What files did you create or modify in this phase?' and verify against the expected deliverable before proceeding.
+R5
+Keep a running PHASE_LOG.md file listing: what was built, what works, what is pending. Paste a summary into the next phase prompt as context.
+R6
+If a phase produces an error, do NOT start the next phase. Fix the error first. Errors compound — a broken Phase 1 breaks all subsequent phases.
+R7
+For the kiosk UI (Phase 4), test on an actual touchscreen or tablet. What looks fine on desktop often has touch target sizing issues on device.
+R8
+After all 6 phases are complete, do one final prompt: 'Review the entire codebase for security issues: SQL injection, missing auth on endpoints, unencrypted embeddings, exposed env vars. Fix all issues found.'
+5. Final Tech Stack — Complete Reference
+This is the definitive tech stack decision for SafeGuard AI, chosen for production reliability, India deployment realities (offline sites, regional languages), and AI coding agent compatibility.
+5.1 AI & Computer Vision Layer
+Layer
+Technology
+Why This Choice
+PPE Detection
+YOLOv8-M (Ultralytics)
+State-of-art real-time detection, 49.9 mAP, runs at 30fps on Jetson Orin. Supports custom class fine-tuning on PPE datasets.
+Deployment Export
+ONNX + TensorRT
+ONNX for cross-hardware portability; TensorRT for NVIDIA GPU acceleration (3x speedup on Jetson). CPU fallback auto-detected.
+Face Recognition
+InsightFace ArcFace (buffalo_l)
+99.77% LFW accuracy. 512-dim embeddings. Best-in-class for partial occlusion (hard hat brim) scenarios. MIT license.
+Video Ingestion
+OpenCV + GStreamer
+RTSP stream decoding, frame extraction at 30fps, hardware-accelerated decoding on Jetson via GStreamer backend.
+Multi-stream Mgmt
+Python asyncio
+Non-blocking concurrent processing of 16+ camera streams per edge node without threading complexity.
+5.2 Backend Layer
+Layer
+Technology
+Why This Choice
+API Framework
+FastAPI (Python 3.11)
+Async-native, auto OpenAPI docs, Pydantic validation, WebSocket support built-in. 3x faster than Flask for concurrent requests.
+ORM
+SQLAlchemy 2.0 + Alembic
+Async-compatible ORM. Alembic for versioned DB migrations. Industry standard — agents write SQLAlchemy correctly vs raw SQL.
+Task Queue
+APScheduler + Redis Pub/Sub
+APScheduler for cron jobs (reports, briefings). Redis Pub/Sub for real-time violation event streaming between services.
+Auth
+JWT (python-jose) + Bcrypt
+Stateless JWT for API auth. Role-based: worker / supervisor / site-manager / admin. Short expiry + refresh token pattern.
+Validation
+Pydantic v2
+Request/response schema validation, automatic serialization, OpenAPI schema generation. Zero boilerplate.
+WebSocket
+FastAPI native WebSockets
+Built into FastAPI. Live camera stream relay to dashboard. Violation event push to supervisor UI.
+5.3 Data & Storage Layer
+Layer
+Technology
+Why This Choice
+Primary DB
+PostgreSQL 15 + TimescaleDB
+TimescaleDB extension converts violation_events into a time-series table with automatic partitioning. 100x faster time-range queries vs vanilla Postgres.
+Cache
+Redis 7
+Sub-millisecond face embedding cache (5-min TTL). Pub/Sub for alert event bus. Alert deduplication. Session storage.
+File Storage
+MinIO (S3-compatible)
+Self-hosted S3 for violation images, audio clips, reports. On-premise for air-gapped sites. Same API as AWS S3 if cloud migration needed.
+Face Embeddings
+PostgreSQL JSONB + pgvector
+Store 512-dim embeddings as JSONB. pgvector extension enables cosine similarity search directly in SQL — no separate vector DB needed.
+Report Files
+MinIO + presigned URLs
+Generated PDFs stored in MinIO. Presigned time-limited download URLs served via API. No file system dependencies.
+5.4 Alert & Voice Layer
+Layer
+Technology
+Why This Choice
+TTS (Dev/MVP)
+gTTS (Google Text-to-Speech)
+Free, supports all 10 Indian languages, generates MP3 in 200ms. Perfect for MVP. No API key needed.
+TTS (Production)
+Azure Cognitive Services TTS
+23 Indian languages, neural voices, custom vocabulary, <100ms latency. Azure has best Hindi/Telugu neural voice quality.
+IoT Messaging
+Eclipse Mosquitto (MQTT 5)
+Lightweight pub/sub for wristband + PA system integration. Runs on edge node. BLE gateway bridges to wristbands.
+Mobile Alerts
+Firebase FCM
+Push notifications to Android supervisor app. Free tier covers 500K messages/day. Reliable delivery with delivery receipts.
+Voice Calls
+Twilio Voice + TwiML
+Level-4 escalation auto-calls. Twilio works in India (DLT registered). TwiML for dynamic alert message generation.
+WhatsApp
+Twilio WhatsApp Business API
+Send violation alerts + weekly scores via WhatsApp. 85% open rate vs 20% for SMS. Supports audio messages for illiterate workers.
+5.5 Frontend Layer
+Layer
+Technology
+Why This Choice
+Framework
+React 18 + TypeScript + Vite
+Fast HMR, TypeScript for correctness, React 18 concurrent features for live feed rendering without jank.
+Styling
+TailwindCSS + shadcn/ui
+Utility-first, no CSS files, shadcn for accessible components. Both AI coding agents know these extremely well — fewer errors.
+State Mgmt
+Zustand
+Minimal boilerplate vs Redux. Perfect for real-time state (active violations, camera feeds). Works well with WebSocket updates.
+Charts
+Recharts
+Declarative, composable, responsive charts. Compliance trend lines, zone heatmaps, hourly violation bars. Works with Tailwind.
+Kiosk UI
+React + Framer Motion
+Framer Motion for fluid animations in kiosk face scan flow. Large touch targets (min 48px) for workers with gloves.
+HTTP Client
+Axios + React Query
+Axios for API calls with JWT interceptor. React Query for server state, caching, background refresh of violation lists.
+Real-time
+Native WebSocket + Zustand
+WebSocket for live camera frames and violation push. Zustand store updated on each WS message. Dashboard re-renders in <16ms.
+5.6 Infrastructure & DevOps Layer
+Layer
+Technology
+Why This Choice
+Edge Hardware
+NVIDIA Jetson Orin NX 16GB
+70 TOPS AI performance. Runs YOLOv8-M at 30fps on 8 camera streams simultaneously. CUDA + TensorRT native. Industrial temp rating.
+Containerization
+Docker + Docker Compose
+All services containerized. Single docker-compose up starts entire stack. Edge and cloud use identical images.
+Orchestration
+Kubernetes (K3s for edge)
+K3s lightweight Kubernetes for edge nodes. Auto-restart failed services. Resource limits prevent memory-hungry AI from starving alerts.
+Reverse Proxy
+Nginx
+SSL termination, WebSocket proxy, static file serving for frontend. Rate limiting for API endpoints.
+CI/CD
+GitHub Actions
+Auto-run tests on PR. Build and push Docker images to registry on merge to main. Deploy to edge nodes via SSH/Ansible.
+Monitoring
+Prometheus + Grafana
+Edge node metrics: CPU, GPU, memory, camera FPS, detection latency, alert delivery rate. Grafana dashboards for ops team.
+Logging
+Structlog + Loki
+Structured JSON logs from all services. Loki aggregates edge + cloud logs. Grafana Loki for log queries during incidents.
+6. Tech Stack Quick Reference Card
+Cut-and-paste this into the beginning of your Phase 0 prompt, or keep it handy for agent corrections.
+# SafeGuard AI — Final Tech Stack Reference
+ 
+BACKEND:
+  Language:     Python 3.11
+  Framework:    FastAPI (async)
+  ORM:          SQLAlchemy 2.0 + Alembic
+  Validation:   Pydantic v2
+  Auth:         JWT (python-jose) + Bcrypt
+  Scheduler:    APScheduler
+  Reports:      ReportLab (PDF) + openpyxl (Excel)
+ 
+AI / COMPUTER VISION:
+  PPE Detection:    YOLOv8-M (Ultralytics) -> ONNX -> TensorRT
+  Face Recognition: InsightFace ArcFace (buffalo_l model)
+  Video:            OpenCV + GStreamer (RTSP ingestion)
+  Vector Search:    pgvector (PostgreSQL extension)
+ 
+DATABASE & STORAGE:
+  Primary DB:   PostgreSQL 15 + TimescaleDB extension
+  Cache:        Redis 7 (pub/sub + caching)
+  File Storage: MinIO (self-hosted S3-compatible)
+  Embeddings:   PostgreSQL JSONB + pgvector
+ 
+ALERTS & VOICE:
+  TTS (MVP):    gTTS (Google TTS, free, 10 Indian languages)
+  TTS (Prod):   Azure Cognitive Services (23 Indian languages)
+  IoT/PA:       MQTT via Eclipse Mosquitto
+  Push:         Firebase Cloud Messaging (FCM)
+  Calls:        Twilio Voice + TwiML
+  WhatsApp:     Twilio WhatsApp Business API
+ 
+FRONTEND (Dashboard):
+  Framework:    React 18 + TypeScript + Vite
+  Styling:      TailwindCSS + shadcn/ui
+  State:        Zustand
+  Charts:       Recharts
+  HTTP:         Axios + React Query
+  Real-time:    Native WebSocket
+ 
+KIOSK UI:
+  Framework:    React 18 + Framer Motion
+  Design:       Pictogram-first, voice-guided, zero text input
+  Touch:        Min 48px touch targets (glove-compatible)
+ 
+INFRASTRUCTURE:
+  Edge:         NVIDIA Jetson Orin NX 16GB
+  Containers:   Docker + Docker Compose
+  Orchestrate:  K3s (lightweight Kubernetes)
+  Proxy:        Nginx
+  CI/CD:        GitHub Actions
+  Monitoring:   Prometheus + Grafana + Loki
+7. Pro Tips for AI Coding Agents
+For Cursor / Windsurf
+Use 'include file' references to keep the agent aware of existing code. In Cursor: @ the relevant files at the start of each phase prompt.
+After each phase, ask: 'Summarize what you built and list any TODOs or known issues.' This surfaces problems before the next phase.
+Use Cursor Rules (.cursorrules) to enforce: always use FastAPI not Flask, always use SQLAlchemy not raw SQL, always use Tailwind not inline styles.
+For Bolt / v0
+Bolt works best with Phase 4 (Frontend). Run Phases 0-3 in Cursor, then use Bolt for rapid UI iteration on dashboard and kiosk.
+v0 by Vercel is excellent for generating the kiosk pictogram UI — paste the Phase 4 kiosk section into v0 specifically for UI design.
+Always specify the exact component library: 'Use shadcn/ui and TailwindCSS only. Do not use Material UI or Ant Design.'
+If the Agent Goes Wrong — Recovery Prompts
+RECOVERY PROMPT A (Wrong Framework):
+'Stop. You used Flask instead of FastAPI. Delete all Flask code.
+ Rewrite using FastAPI with async endpoints. Start from the health check endpoint.'
+ 
+RECOVERY PROMPT B (Lost Context):
+'Here is the current folder structure: [paste tree output]
+ Here is what is working: [list]. Here is what you were building: [task].
+ Continue from where you left off without changing any working code.'
+ 
+RECOVERY PROMPT C (Overcomplicated):
+'Simplify this. Use the existing PostgreSQL DB — do not add MongoDB.
+ Use the existing Redis — do not add RabbitMQ.
+ Stick to the agreed tech stack. Refactor to use only what we already have.'
+ 
+RECOVERY PROMPT D (Security Audit — Run After All Phases):
+'Audit the entire codebase for:',
+ 1. SQL injection vulnerabilities (use parameterized queries)
+ 2. Unprotected API endpoints (all routes must require JWT except /health)
+ 3. Hardcoded secrets (move to .env)
+ 4. Face embeddings stored unencrypted (must use Fernet encryption)
+ 5. CORS configured too broadly (whitelist specific frontend origins)
+Fix all issues found and list the files you changed.'
+You're Ready to Build SafeGuard AI
+6 Prompts. 1 Production App. Zero Workplace Accidents.
