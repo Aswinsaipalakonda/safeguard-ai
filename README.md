@@ -23,6 +23,15 @@ An enterprise-grade, AI-driven safety monitoring system designed for mines, cons
 
 ---
 
+## 🆕 What's New (Latest Updates)
+
+- **Kiosk UI Overhaul:** Complete redesign of the Worker Kiosk with a minimalistic dark-themed UI, smooth step-by-step onboarding flow, robust face verification, and bilingual voice-guided instructions.
+- **Robust Analytics & Data Seeding:** The Admin Dashboard and System Analytics pages are now packed with real-time graphs, KPIs, and predictive risk logic. The backend includes a `seed_db.py` script to instantly generate 30 days of realistic simulation data!
+- **Django Backend & Dockerization:** Fully migrated to a Django/PostgreSQL stack, containerized with Docker Compose for a frictionless, one-command setup procedure.
+- **Automated Authentication Handling:** Refined JWT token flows, demo mode authentication, and role-based login redirection for Supervisors vs. Admins.
+
+---
+
 ## 📋 Table of Contents
 
 - [Problem Statement](#-problem-statement)
@@ -71,49 +80,49 @@ SafeGuard AI replaces manual safety audits with an **autonomous, 24/7 AI-powered
 
 ### 🖥️ Supervisor Dashboard
 
-| Feature | Description |
-|---------|-------------|
-| **Live Monitoring** | Real-time violation feed with auto-simulation, dynamic KPI counters (violations, compliance rate, high risks, resolved), 5-camera panel with alert indicators, LIVE/PAUSED toggle, and one-click event triggering |
-| **Violations Log** | Searchable, filterable table of all violations with severity badges, status filters, CSV export, row-click detail modals with Resolve/Escalate actions |
-| **Violation Heatmap** | Interactive zone-based hotspot visualization with clickable floor plan, summary cards, zone detail panel, and zone ranking table |
-| **Safety Leaderboard** | Gamified worker rankings with Top 3 podium, score bars, safety streaks, achievement badges (Iron Streak, Zone Master, Rising Star), and configurable time periods (7D/14D/30D) |
-| **Compliance Reports** | DGMS compliance center with 3 interactive chart tabs — gradient Area chart (7-day trend with compliance/violations/incidents), Donut + Radar chart (PPE breakdown), gradient Bar chart (zone analysis) — plus one-click report generation |
-| **System Settings** | 5-tab settings panel — Profile, Notifications (push/email toggles), AI Configuration (confidence threshold slider, face verification toggle), Camera Management (5 cameras with online/offline toggle, resolution, FPS, zone, maintenance dates), Security (password change, 2FA, API keys, active sessions) |
+| Feature                | Description                                                                                                                                                                                                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Live Monitoring**    | Real-time violation feed with auto-simulation, dynamic KPI counters (violations, compliance rate, high risks, resolved), 5-camera panel with alert indicators, LIVE/PAUSED toggle, and one-click event triggering                                                                                            |
+| **Violations Log**     | Searchable, filterable table of all violations with severity badges, status filters, CSV export, row-click detail modals with Resolve/Escalate actions                                                                                                                                                       |
+| **Violation Heatmap**  | Interactive zone-based hotspot visualization with clickable floor plan, summary cards, zone detail panel, and zone ranking table                                                                                                                                                                             |
+| **Safety Leaderboard** | Gamified worker rankings with Top 3 podium, score bars, safety streaks, achievement badges (Iron Streak, Zone Master, Rising Star), and configurable time periods (7D/14D/30D)                                                                                                                               |
+| **Compliance Reports** | DGMS compliance center with 3 interactive chart tabs — gradient Area chart (7-day trend with compliance/violations/incidents), Donut + Radar chart (PPE breakdown), gradient Bar chart (zone analysis) — plus one-click report generation                                                                    |
+| **System Settings**    | 5-tab settings panel — Profile, Notifications (push/email toggles), AI Configuration (confidence threshold slider, face verification toggle), Camera Management (5 cameras with online/offline toggle, resolution, FPS, zone, maintenance dates), Security (password change, 2FA, API keys, active sessions) |
 
 ### 🏭 Worker Kiosk
 
-| Feature | Description |
-|---------|-------------|
-| **Face Scan Screen** | Live camera-based identity verification with animated scan overlay, bilingual UI (English/Hindi), voice instructions via Web Speech API, language selection, auto-redirect on success |
-| **PPE Check Screen** | Full-body PPE verification with 5 equipment cards (Helmet, High-Vis Vest, Boots, Goggles, Gloves), green/red status indicators, voice announcements for pass/fail, supervisor auto-notification on violations |
-| **Bilingual Voice Guidance** | Text-to-Speech in English and Hindi — workers hear instructions in their language, solving the literacy barrier at factory gates |
+| Feature                      | Description                                                                                                                                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Face Scan Screen**         | Live camera-based identity verification with animated scan overlay, bilingual UI (English/Hindi), voice instructions via Web Speech API, language selection, auto-redirect on success                         |
+| **PPE Check Screen**         | Full-body PPE verification with 5 equipment cards (Helmet, High-Vis Vest, Boots, Goggles, Gloves), green/red status indicators, voice announcements for pass/fail, supervisor auto-notification on violations |
+| **Bilingual Voice Guidance** | Text-to-Speech in English and Hindi — workers hear instructions in their language, solving the literacy barrier at factory gates                                                                              |
 
 ### 📊 Analytics & Intelligence
 
-| Feature | Description |
-|---------|-------------|
-| **Predictive Risk Analytics** | ML-based risk predictions by zone and time, enabling proactive safety measures |
-| **Near-Miss Tracking** | Logs and analyzes close-call incidents to prevent future violations |
-| **Shift Handover Reports** | Automated safety briefings for shift transitions with pending violations and zone status |
+| Feature                       | Description                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| **Predictive Risk Analytics** | ML-based risk predictions by zone and time, enabling proactive safety measures           |
+| **Near-Miss Tracking**        | Logs and analyzes close-call incidents to prevent future violations                      |
+| **Shift Handover Reports**    | Automated safety briefings for shift transitions with pending violations and zone status |
 
 ### 🔔 Multi-Channel Alert System
 
-| Level | Channel | Trigger Time |
-|-------|---------|-------------|
-| 1 | Dashboard popup + push notification | Immediate (0 min) |
-| 2 | SMS to shift supervisor (Twilio) | +2 min |
-| 3 | WhatsApp + Email to safety officer | +5 min |
-| 4 | PA system voice warning (gTTS + MQTT) | +10 min |
-| 5 | Auto-call to plant manager (Twilio Voice) | +15 min |
-| 6 | Machine lockout + emergency protocol | +20 min |
+| Level | Channel                                   | Trigger Time      |
+| ----- | ----------------------------------------- | ----------------- |
+| 1     | Dashboard popup + push notification       | Immediate (0 min) |
+| 2     | SMS to shift supervisor (Twilio)          | +2 min            |
+| 3     | WhatsApp + Email to safety officer        | +5 min            |
+| 4     | PA system voice warning (gTTS + MQTT)     | +10 min           |
+| 5     | Auto-call to plant manager (Twilio Voice) | +15 min           |
+| 6     | Machine lockout + emergency protocol      | +20 min           |
 
 ### 📄 Report Generation
 
-| Report | Format | Contents |
-|--------|--------|----------|
-| **Daily Safety Report** | PDF | Violation summary, zone breakdown, worker compliance |
-| **DGMS Compliance Report** | PDF | Legally formatted report for Directorate General of Mines Safety |
-| **ESG Report** | PDF | Environmental, Social, and Governance metrics for insurance |
+| Report                     | Format | Contents                                                         |
+| -------------------------- | ------ | ---------------------------------------------------------------- |
+| **Daily Safety Report**    | PDF    | Violation summary, zone breakdown, worker compliance             |
+| **DGMS Compliance Report** | PDF    | Legally formatted report for Directorate General of Mines Safety |
+| **ESG Report**             | PDF    | Environmental, Social, and Governance metrics for insurance      |
 
 ---
 
@@ -238,59 +247,59 @@ SafeGuard AI replaces manual safety audits with an **autonomous, 24/7 AI-powered
 
 ### Frontend
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| **React** | 19.2 | Component-based UI for Dashboard & Kiosk |
-| **Vite** | 7.3 | Lightning-fast build tool & dev server |
-| **TypeScript** | 5.9 | Strict static typing across all components |
-| **TailwindCSS** | 4.2 | Utility-first styling with custom HMI design system |
-| **shadcn/ui** | 3.8 | Accessible, customizable component library |
-| **Recharts** | 3.7 | Interactive data visualization (Area, Bar, Pie, Radar charts) |
-| **Zustand** | 5.0 | Lightweight global state management |
-| **Axios** | 1.13 | HTTP client for REST API communication |
-| **Framer Motion** | 12.34 | Smooth animations and transitions |
-| **Lucide React** | 0.575 | Modern icon library (100+ icons used) |
-| **React Router** | 7.13 | Client-side routing with protected routes |
+| Technology        | Version | Purpose                                                       |
+| ----------------- | ------- | ------------------------------------------------------------- |
+| **React**         | 19.2    | Component-based UI for Dashboard & Kiosk                      |
+| **Vite**          | 7.3     | Lightning-fast build tool & dev server                        |
+| **TypeScript**    | 5.9     | Strict static typing across all components                    |
+| **TailwindCSS**   | 4.2     | Utility-first styling with custom HMI design system           |
+| **shadcn/ui**     | 3.8     | Accessible, customizable component library                    |
+| **Recharts**      | 3.7     | Interactive data visualization (Area, Bar, Pie, Radar charts) |
+| **Zustand**       | 5.0     | Lightweight global state management                           |
+| **Axios**         | 1.13    | HTTP client for REST API communication                        |
+| **Framer Motion** | 12.34   | Smooth animations and transitions                             |
+| **Lucide React**  | 0.575   | Modern icon library (100+ icons used)                         |
+| **React Router**  | 7.13    | Client-side routing with protected routes                     |
 
 ### Backend
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| **Django** | 4.2–5.3 | Core backend framework — REST API, ORM, Admin |
-| **Django REST Framework** | Latest | Serializers, ViewSets, API routing |
-| **SimpleJWT** | Latest | JSON Web Token authentication |
-| **Django Channels** | Latest | WebSocket support for real-time streaming |
-| **Daphne** | Latest | ASGI server for WebSocket + HTTP |
-| **PostgreSQL** | 15 | Primary relational database (TimescaleDB extension) |
-| **Redis** | 7 | Real-time pub/sub, caching, channel layers |
-| **MinIO** | Latest | S3-compatible object storage for violation frames |
+| Technology                | Version | Purpose                                             |
+| ------------------------- | ------- | --------------------------------------------------- |
+| **Django**                | 4.2–5.3 | Core backend framework — REST API, ORM, Admin       |
+| **Django REST Framework** | Latest  | Serializers, ViewSets, API routing                  |
+| **SimpleJWT**             | Latest  | JSON Web Token authentication                       |
+| **Django Channels**       | Latest  | WebSocket support for real-time streaming           |
+| **Daphne**                | Latest  | ASGI server for WebSocket + HTTP                    |
+| **PostgreSQL**            | 15      | Primary relational database (TimescaleDB extension) |
+| **Redis**                 | 7       | Real-time pub/sub, caching, channel layers          |
+| **MinIO**                 | Latest  | S3-compatible object storage for violation frames   |
 
 ### AI & Computer Vision
 
-| Technology | Purpose |
-|-----------|---------|
-| **YOLOv8** (ultralytics) | Real-time PPE object detection |
-| **OpenCV** | Frame extraction from RTSP camera streams |
-| **PyTorch** | Deep learning inference backend |
-| **NumPy** | Numerical computation for frame processing |
+| Technology               | Purpose                                    |
+| ------------------------ | ------------------------------------------ |
+| **YOLOv8** (ultralytics) | Real-time PPE object detection             |
+| **OpenCV**               | Frame extraction from RTSP camera streams  |
+| **PyTorch**              | Deep learning inference backend            |
+| **NumPy**                | Numerical computation for frame processing |
 
 ### Notification Channels
 
-| Technology | Purpose |
-|-----------|---------|
-| **Twilio** | SMS, WhatsApp, and Voice call alerts |
-| **SMTP** | Email notifications and report delivery |
-| **gTTS** | Text-to-Speech for PA system announcements |
-| **paho-mqtt** | MQTT protocol for PA system integration |
+| Technology    | Purpose                                    |
+| ------------- | ------------------------------------------ |
+| **Twilio**    | SMS, WhatsApp, and Voice call alerts       |
+| **SMTP**      | Email notifications and report delivery    |
+| **gTTS**      | Text-to-Speech for PA system announcements |
+| **paho-mqtt** | MQTT protocol for PA system integration    |
 
 ### Infrastructure
 
-| Technology | Purpose |
-|-----------|---------|
-| **Docker Compose** | Multi-service orchestration (6 containers) |
-| **TimescaleDB** | Time-series optimized PostgreSQL for violation logs |
-| **MinIO** | Self-hosted S3 for violation frame storage |
-| **Redis** | WebSocket channel layer + real-time event bus |
+| Technology         | Purpose                                             |
+| ------------------ | --------------------------------------------------- |
+| **Docker Compose** | Multi-service orchestration (6 containers)          |
+| **TimescaleDB**    | Time-series optimized PostgreSQL for violation logs |
+| **MinIO**          | Self-hosted S3 for violation frame storage          |
+| **Redis**          | WebSocket channel layer + real-time event bus       |
 
 ---
 
@@ -385,6 +394,7 @@ docker-compose up -d
 ```
 
 Docker Compose starts 4 services automatically:
+
 - **PostgreSQL** (TimescaleDB) on port 5432
 - **Redis** on port 6379
 - **MinIO** on ports 9000/9001
@@ -435,10 +445,10 @@ npm run build
 
 ### Demo Accounts
 
-| Role | Email | Password | Access |
-|------|-------|----------|--------|
-| **Supervisor** | `admin@safeguard.ai` | `demo123` | Full dashboard access |
-| **Worker** | `worker@safeguard.ai` | `demo123` | Kiosk interface |
+| Role           | Email                 | Password  | Access                |
+| -------------- | --------------------- | --------- | --------------------- |
+| **Supervisor** | `admin@safeguard.ai`  | `demo123` | Full dashboard access |
+| **Worker**     | `worker@safeguard.ai` | `demo123` | Kiosk interface       |
 
 > Demo accounts work without a running backend — the frontend falls back to rich demo data automatically.
 
@@ -447,27 +457,35 @@ npm run build
 ## 📸 Screenshots
 
 ### Supervisor Dashboard — Live Monitoring
+
 > Real-time violation feed with auto-simulation, 5-camera panel, dynamic KPI counters, LIVE/PAUSED toggle
 
 ### Violations Log
+
 > Searchable table with 15+ violations, severity filters, CSV export, detail modal with Resolve/Escalate
 
 ### Compliance Reports — 7-Day Trend
+
 > Gradient area chart with compliance %, violations, and critical incidents
 
 ### Compliance Reports — PPE Breakdown
+
 > Donut chart + Radar chart showing per-equipment violation distribution
 
 ### Violation Heatmap
+
 > Interactive zone map with hotspot visualization and drill-down details
 
 ### Safety Leaderboard
+
 > Gamified rankings with Top 3 podium, streaks, and achievement badges
 
 ### Worker Kiosk — Face Scan
+
 > Camera-based identity verification with bilingual voice guidance
 
 ### Worker Kiosk — PPE Check
+
 > Equipment verification cards with green (pass) / red (fail) indicators
 
 ---
@@ -476,71 +494,71 @@ npm run build
 
 ### Authentication
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/auth/token/` | Obtain JWT access + refresh token |
-| `POST` | `/api/auth/token/refresh/` | Refresh access token |
+| Method | Endpoint                   | Description                       |
+| ------ | -------------------------- | --------------------------------- |
+| `POST` | `/api/auth/token/`         | Obtain JWT access + refresh token |
+| `POST` | `/api/auth/token/refresh/` | Refresh access token              |
 
 ### Core CRUD (ViewSets)
 
-| Resource | Endpoint | Operations |
-|----------|----------|------------|
-| Sites | `/api/sites/` | GET, POST, PUT, PATCH, DELETE |
-| Zones | `/api/zones/` | GET, POST, PUT, PATCH, DELETE |
-| Workers | `/api/workers/` | GET, POST, PUT, PATCH, DELETE |
+| Resource   | Endpoint           | Operations                    |
+| ---------- | ------------------ | ----------------------------- |
+| Sites      | `/api/sites/`      | GET, POST, PUT, PATCH, DELETE |
+| Zones      | `/api/zones/`      | GET, POST, PUT, PATCH, DELETE |
+| Workers    | `/api/workers/`    | GET, POST, PUT, PATCH, DELETE |
 | Violations | `/api/violations/` | GET, POST, PUT, PATCH, DELETE |
-| Alerts | `/api/alerts/` | GET, POST, PUT, PATCH, DELETE |
-| Reports | `/api/reports/` | GET, POST, PUT, PATCH, DELETE |
+| Alerts     | `/api/alerts/`     | GET, POST, PUT, PATCH, DELETE |
+| Reports    | `/api/reports/`    | GET, POST, PUT, PATCH, DELETE |
 
 ### Analytics
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/analytics/compliance/` | 7-day compliance trend data |
-| `GET` | `/api/analytics/heatmap/` | Zone-wise violation hotspot data |
-| `GET` | `/api/analytics/leaderboard/` | Worker safety rankings |
-| `GET` | `/api/analytics/predictions/` | Predictive risk analysis |
-| `GET` | `/api/analytics/near-misses/` | Near-miss incident tracking |
-| `GET` | `/api/dashboard/stats/` | Dashboard summary statistics |
+| Method | Endpoint                      | Description                      |
+| ------ | ----------------------------- | -------------------------------- |
+| `GET`  | `/api/analytics/compliance/`  | 7-day compliance trend data      |
+| `GET`  | `/api/analytics/heatmap/`     | Zone-wise violation hotspot data |
+| `GET`  | `/api/analytics/leaderboard/` | Worker safety rankings           |
+| `GET`  | `/api/analytics/predictions/` | Predictive risk analysis         |
+| `GET`  | `/api/analytics/near-misses/` | Near-miss incident tracking      |
+| `GET`  | `/api/dashboard/stats/`       | Dashboard summary statistics     |
 
 ### Kiosk
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/kiosk/scan-face/` | Face recognition for worker identification |
-| `POST` | `/api/kiosk/verify-ppe/` | PPE equipment verification |
+| Method | Endpoint                 | Description                                |
+| ------ | ------------------------ | ------------------------------------------ |
+| `POST` | `/api/kiosk/scan-face/`  | Face recognition for worker identification |
+| `POST` | `/api/kiosk/verify-ppe/` | PPE equipment verification                 |
 
 ### Cameras
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
+| Method | Endpoint              | Description                      |
+| ------ | --------------------- | -------------------------------- |
 | `POST` | `/api/cameras/start/` | Start monitoring a camera stream |
-| `POST` | `/api/cameras/stop/` | Stop monitoring a camera stream |
-| `GET` | `/api/cameras/` | List all active cameras |
+| `POST` | `/api/cameras/stop/`  | Stop monitoring a camera stream  |
+| `GET`  | `/api/cameras/`       | List all active cameras          |
 
 ### Reports
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/reports/generate/daily/` | Generate daily safety report |
-| `POST` | `/api/reports/generate/dgms/` | Generate DGMS compliance report |
-| `POST` | `/api/reports/generate/esg/` | Generate ESG metrics report |
+| Method | Endpoint                       | Description                     |
+| ------ | ------------------------------ | ------------------------------- |
+| `POST` | `/api/reports/generate/daily/` | Generate daily safety report    |
+| `POST` | `/api/reports/generate/dgms/`  | Generate DGMS compliance report |
+| `POST` | `/api/reports/generate/esg/`   | Generate ESG metrics report     |
 
 ### Operations
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/emergency/sos/` | Trigger emergency SOS protocol |
-| `POST` | `/api/shift/handover/` | Generate shift handover report |
-| `POST` | `/api/notifications/send/` | Send violation notification (Email/SMS/WhatsApp) |
-| `POST` | `/api/workers/{id}/notify/` | Notify a specific worker |
+| Method | Endpoint                    | Description                                      |
+| ------ | --------------------------- | ------------------------------------------------ |
+| `POST` | `/api/emergency/sos/`       | Trigger emergency SOS protocol                   |
+| `POST` | `/api/shift/handover/`      | Generate shift handover report                   |
+| `POST` | `/api/notifications/send/`  | Send violation notification (Email/SMS/WhatsApp) |
+| `POST` | `/api/workers/{id}/notify/` | Notify a specific worker                         |
 
 ### WebSocket Endpoints
 
-| Endpoint | Description |
-|----------|-------------|
-| `ws://localhost:8000/ws/live/` | Live monitoring event stream |
-| `ws://localhost:8000/ws/camera/{camera_id}/` | Camera frame stream (JPEG) |
+| Endpoint                                     | Description                  |
+| -------------------------------------------- | ---------------------------- |
+| `ws://localhost:8000/ws/live/`               | Live monitoring event stream |
+| `ws://localhost:8000/ws/camera/{camera_id}/` | Camera frame stream (JPEG)   |
 
 ---
 
@@ -578,17 +596,17 @@ npm run build
 
 ### PPE Detection Classes
 
-| ID | Class | Type |
-|----|-------|------|
-| 0 | `helmet` | Compliant |
-| 1 | `no_helmet` | Violation |
-| 2 | `safety_vest` | Compliant |
-| 3 | `no_vest` | Violation |
-| 4 | `safety_gloves` | Compliant |
-| 5 | `no_gloves` | Violation |
-| 6 | `safety_goggles` | Compliant |
-| 7 | `safety_boots` | Compliant |
-| 8 | `body_harness` | Compliant |
+| ID  | Class            | Type      |
+| --- | ---------------- | --------- |
+| 0   | `helmet`         | Compliant |
+| 1   | `no_helmet`      | Violation |
+| 2   | `safety_vest`    | Compliant |
+| 3   | `no_vest`        | Violation |
+| 4   | `safety_gloves`  | Compliant |
+| 5   | `no_gloves`      | Violation |
+| 6   | `safety_goggles` | Compliant |
+| 7   | `safety_boots`   | Compliant |
+| 8   | `body_harness`   | Compliant |
 
 ---
 
@@ -619,14 +637,14 @@ Camera (RTSP) → OpenCV Frame Extraction → YOLOv8 Inference → PPE Classific
 
 ### Model Specifications
 
-| Parameter | Value |
-|-----------|-------|
-| Architecture | YOLOv8s (Small) |
-| Input Size | 640×640 |
-| Classes | 9 (PPE-specific) |
-| Inference Speed | ~23ms/frame (GPU) |
-| Confidence Threshold | 85% (configurable) |
-| Output | Bounding boxes + class + confidence |
+| Parameter            | Value                               |
+| -------------------- | ----------------------------------- |
+| Architecture         | YOLOv8s (Small)                     |
+| Input Size           | 640×640                             |
+| Classes              | 9 (PPE-specific)                    |
+| Inference Speed      | ~23ms/frame (GPU)                   |
+| Confidence Threshold | 85% (configurable)                  |
+| Output               | Bounding boxes + class + confidence |
 
 ---
 
@@ -634,23 +652,23 @@ Camera (RTSP) → OpenCV Frame Extraction → YOLOv8 Inference → PPE Classific
 
 See [next-plan.md](next-plan.md) for the detailed phase-wise implementation plan with ready-to-use prompts.
 
-| Phase | Feature | Status |
-|-------|---------|--------|
-| ✅ | Supervisor Dashboard (6 pages) | Complete |
-| ✅ | Worker Kiosk (Face Scan + PPE Check) | Complete |
-| ✅ | Backend API (25+ endpoints) | Complete |
-| ✅ | AI Detection Pipeline (YOLOv8) | Complete |
-| ✅ | Multi-Channel Notifications | Complete |
-| ✅ | WebSocket Real-Time Streaming | Complete |
-| ✅ | Demo Mode (works without backend) | Complete |
-| 🔲 | Trained PPE Model (custom dataset) | Phase 1 |
-| 🔲 | Camera Feed Bounding Box Visualization | Phase 2 |
-| 🔲 | Automatic Attendance System | Phase 3 |
-| 🔲 | Worker Profile & History | Phase 4 |
-| 🔲 | AI Insights Dashboard | Phase 4 |
-| 🔲 | 3D Factory Floor Map | Phase 7 |
-| 🔲 | Voice-Commanded Dashboard | Phase 7 |
-| 🔲 | Gamification & Achievements | Phase 7 |
+| Phase | Feature                                | Status   |
+| ----- | -------------------------------------- | -------- |
+| ✅    | Supervisor Dashboard (6 pages)         | Complete |
+| ✅    | Worker Kiosk (Face Scan + PPE Check)   | Complete |
+| ✅    | Backend API (25+ endpoints)            | Complete |
+| ✅    | AI Detection Pipeline (YOLOv8)         | Complete |
+| ✅    | Multi-Channel Notifications            | Complete |
+| ✅    | WebSocket Real-Time Streaming          | Complete |
+| ✅    | Demo Mode (works without backend)      | Complete |
+| ✅    | Automatic Attendance System            | Complete |
+| ✅    | Worker Profile & History               | Complete |
+| ✅    | AI Insights Dashboard                  | Complete |
+| ✅    | Gamification & Achievements            | Complete |
+| 🔲    | Trained PPE Model (custom dataset)     | Phase 1  |
+| 🔲    | Camera Feed Bounding Box Visualization | Phase 2  |
+| 🔲    | 3D Factory Floor Map                   | Phase 7  |
+| 🔲    | Voice-Commanded Dashboard              | Phase 7  |
 
 ---
 
@@ -668,6 +686,6 @@ This project is built for the LNIT SUMMIT 2K26 hackathon. All rights reserved.
 
 <div align="center">
 
-**SafeGuard AI** — *Because every worker deserves to go home safe.*
+**SafeGuard AI** — _Because every worker deserves to go home safe._
 
 </div>

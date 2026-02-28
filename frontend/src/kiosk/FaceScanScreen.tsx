@@ -22,6 +22,16 @@ export default function FaceScanScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  /* ── Read stored worker identity from login ───────────────────────── */
+  const storedWorker = (() => {
+    try {
+      const raw = localStorage.getItem("safeguard_worker");
+      if (raw) return JSON.parse(raw) as { employee_code: string; name: string };
+    } catch { /* ignore */ }
+    return null;
+  })();
+  const empCode = storedWorker?.employee_code || "";
+
   /* ── Clock ─────────────────────────────────────────────────────────── */
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
@@ -68,7 +78,7 @@ export default function FaceScanScreen() {
       const frame = captureFrame();
       if (!frame) throw new Error("Failed to capture camera frame");
 
-      const res = await kioskAPI.scanFace(frame);
+      const res = await kioskAPI.scanFace(frame, empCode);
       clearInterval(pt);
       setProgress(100);
       setMatchedName(res.data.name);

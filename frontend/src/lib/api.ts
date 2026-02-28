@@ -466,9 +466,9 @@ export const kioskAPI = {
   /** Enroll a worker's face — stores embedding in DB */
   enrollFace: (employee_code: string, image: string) =>
     api.post<KioskEnrollResult>('kiosk/enroll-face/', { employee_code, image }),
-  /** Verify face against enrolled embeddings — returns matched worker */
-  scanFace: (image: string) =>
-    api.post<KioskFaceScanResult>('kiosk/scan-face/', { image }),
+  /** Verify face against enrolled embeddings — returns matched worker (strict 1:1) */
+  scanFace: (image: string, employee_code?: string) =>
+    api.post<KioskFaceScanResult>('kiosk/scan-face/', { image, employee_code }),
   verifyPPE: (image: string, workerId?: number) =>
     api.post<KioskPPEResult>('kiosk/verify-ppe/', { image, worker_id: workerId }),
   /** Record attendance + optional violations after PPE check */

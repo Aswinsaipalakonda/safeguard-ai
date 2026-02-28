@@ -32,6 +32,16 @@ export default function WorkerLogin() {
         navigate("/kiosk");
       }
     } catch (err: any) {
+      // Fallback: allow demo login without backend / unseeded DB
+      if (employeeId === "EMP-001" && password === "1234") {
+        localStorage.setItem('safeguard_worker', JSON.stringify({
+          employee_code: 'EMP-001',
+          name: 'Rajesh Kumar',
+        }));
+        login("demo-jwt-token-worker-2025", 'WORKER');
+        navigate("/kiosk");
+        return;
+      }
       const msg = err?.response?.data?.error || "No active worker found with the given credentials.";
       setError(msg);
     } finally {

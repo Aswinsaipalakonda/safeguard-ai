@@ -121,6 +121,7 @@ export default function PPECheckScreen() {
     ctx.clearRect(0, 0, dw, dh);
 
     for (const det of dets) {
+      if (!det.bbox) continue;
       const [nx1, ny1, nx2, ny2] = det.bbox;
       const x1 = nx1 * dw;
       const y1 = ny1 * dh;
@@ -205,7 +206,6 @@ export default function PPECheckScreen() {
       const optClasses = getOptionalViolationClasses();
       setOptionalClasses(optClasses);
 
-      const hasPositive = dets.some((d: PPEDetection) => !d.is_violation);
       const hasRequiredViolation = dets.some(
         (d: PPEDetection) => d.is_violation && !optClasses.has(d.class)
       );
@@ -213,19 +213,31 @@ export default function PPECheckScreen() {
       const ALL_VIOLATION_CLASSES = ["no_helmet", "no_goggles", "no_glove", "no_mask", "no_shoes"];
       const allPPEOptional = ALL_VIOLATION_CLASSES.every((c) => optClasses.has(c));
 
+      // Which required positive classes must be seen for approval?
+      // e.g. if reqHelmet=true → "helmet" must be detected
+      const REQUIRED_POSITIVE_MAP: Record<string, string> = {
+        no_helmet: "helmet", no_goggles: "goggles", no_glove: "glove",
+        no_mask: "mask", no_shoes: "shoes",
+      };
+      const requiredPositiveClasses = ALL_VIOLATION_CLASSES
+        .filter((vc) => !optClasses.has(vc))
+        .map((vc) => REQUIRED_POSITIVE_MAP[vc]);
+      const foundPositiveClasses = new Set(
+        dets.filter((d: PPEDetection) => !d.is_violation).map((d: PPEDetection) => d.class)
+      );
+      const allRequiredPresent = requiredPositiveClasses.every(
+        (cls) => foundPositiveClasses.has(cls)
+      );
+
       // Approve when:
       //  - all PPE items are optional (nothing required → always pass), OR
-      //  - at least one positive PPE detected and no required violations, OR
-      //  - all detected violations are optional (admin waived those items)
-      const allViolationsOptional = dets.length > 0 && dets.every(
-        (d: PPEDetection) => !d.is_violation || optClasses.has(d.class)
-      );
+      //  - every required PPE item is positively detected AND no required violations
       setApproved(
         allPPEOptional
           ? true
           : dets.length === 0
             ? null
-            : (hasPositive && !hasRequiredViolation) || allViolationsOptional
+            : allRequiredPresent && !hasRequiredViolation
       );
 
       // Only show required missing items

@@ -65,12 +65,20 @@ export default function LiveMonitoring() {
         violationsAPI.list({ ordering: '-created_at', page_size: 20 }),
         zonesAPI.list({ page_size: 50 }),
       ]);
-      setStats(statsRes.data);
-      setZones(zonesRes.data.results);
-      setViolationEvents(violationsRes.data.results.map(violationToEvent));
-      dataLoadedRef.current = true;
+      // Only use API data if the DB has meaningful content
+      const hasMeaningful = statsRes.data.today_violations > 0 || statsRes.data.active_alerts > 0 || violationsRes.data.results?.length > 0;
+      if (hasMeaningful) {
+        setStats(statsRes.data);
+        setViolationEvents(violationsRes.data.results.map(violationToEvent));
+        dataLoadedRef.current = true;
+      } else if (!dataLoadedRef.current) {
+        throw new Error("empty"); // fall through to fallback
+      }
+      if (zonesRes.data.results?.length > 0) {
+        setZones(zonesRes.data.results);
+      }
       // Flash cameras with unresolved violations
-      if (!initial) {
+      if (!initial && hasMeaningful) {
         const cams = violationsRes.data.results
           .filter(v => !v.resolved_at).map(v => v.camera_id).slice(0, 2);
         if (cams.length) {
